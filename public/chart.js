@@ -59,6 +59,20 @@ export class Chart {
     this.#rebuild(); this.setAuto(true); this.resetView();
   }
 
+  // Live price for the bar that is still open. New bars come from updateTail.
+  livePrice(price, now = Date.now() / 1000) {
+    const r = this.raw.at(-1);
+    if (!r || !(price > 0) || price === r.c) return;
+    const d = new Date(r.t * 1000);
+    const end = this.tfSeconds >= 28 * 86400 ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) / 1000 : r.t + this.tfSeconds;
+    if (now < r.t || now >= end) return;
+    const bar = { ...r, c: price, h: Math.max(r.h, price), l: Math.min(r.l, price) };
+    this.raw[this.raw.length - 1] = bar;
+    if (this.type === 'heikin') this.rows = heikinAshi(this.raw); else this.rows = this.raw;
+    this.ind = compute(this.raw, this.cfg);
+    this.draw();
+  }
+
   updateTail(tail) {
     if (!tail.length) return;
     const follow = this.right >= this.raw.length - 1;

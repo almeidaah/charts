@@ -4,6 +4,7 @@ import { mountTools } from './tools.js';
 import { mountIndicators } from './legend.js';
 import { withDefaults } from './indicators.js';
 import { createTicks, firstChange } from './ticks.js';
+import { createLive, applyTick } from './live.js';
 import { AUTO_GROUPS, arrange, autoGroup, groupOf, cleanName } from './groups.js';
 
 const $ = id => document.getElementById(id);
@@ -430,9 +431,38 @@ function renderDetails() {
   box.replaceChildren(...parts);
 }
 
+// Live Binance prices: each update touches only its own row.
+const live = createLive({
+  onPrice(id, price) {
+    const q = quotes[id];
+    if (!q || q.last === price) return;
+    quotes[id] = applyTick(q, price);
+    ticks.update({ [id]: quotes[id] });
+    if (!editing) updateRow(id);
+    if (current?.id === id) { chart.livePrice(price); renderDetails(); renderHeader(); }
+  },
+});
+function followLive() {
+  live.setSymbols(list.filter(i => i.source === 'binance').map(i => i.symbol));
+  live.check();
+}
+function updateRow(id) {
+  const row = document.querySelector(`.row[data-id="${CSS.escape(id)}"]`), inst = list.find(i => i.id === id), q = quotes[id];
+  if (!row || !inst) return;
+  const d = decimalsFor(inst, q.last), [, , price, chg, change] = row.children;
+  price.replaceWith(priceCell(inst, q, d));
+  chg.textContent = q.chg == null ? '' : num(q.chg, d); chg.className = tone(q.chg);
+  change.textContent = pct(q.pct); change.className = tone(q.pct);
+}
+
 async function refreshQuotes() {
   if (document.hidden || !list.length) return;
-  try { quotes = await api(`quotes?${new URLSearchParams({ focus: current?.id ?? '' })}`); ticks.update(quotes); if (!editing) renderList(); renderDetails(); renderHeader(); } catch { /* next cycle */ }
+  followLive();
+  try {
+    const fresh = await api(`quotes?${new URLSearchParams({ focus: current?.id ?? '' })}`);
+    for (const [id, q] of Object.entries(fresh)) if (live.fresh(id) && quotes[id]?.last != null) fresh[id] = applyTick(q, quotes[id].last); // the stream is newer
+    quotes = fresh; ticks.update(quotes); if (!editing) renderList(); renderDetails(); renderHeader();
+  } catch { /* next cycle */ }
 }
 
 async function refreshStatus() {
@@ -728,8 +758,8 @@ async function init() {
   await start();
   setInterval(refreshQuotes, 5_000);
   setInterval(checkChanges, 4_000);
-  setInterval(poll, 15_000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkChanges(); refreshQuotes(); poll(); } });
+  setInterval(poll, 10_000);
+  document.addEventListener('visibilitychange', () => { live.check(); if (!document.hidden) { checkChanges(); refreshQuotes(); poll(); } });
 }
 init();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

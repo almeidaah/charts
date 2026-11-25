@@ -7,7 +7,7 @@ const getJson = createClient({ name: 'Yahoo', concurrency: 3, headers: { 'User-A
 
 // How far back Yahoo goes on each timeframe.
 const MAX_DAYS = { '1m': 7, '5m': 59, '15m': 59, '30m': 59, '1h': 729 };
-export const QUOTE_TTL = 15_000; // ms between quote requests
+export const QUOTE_TTL = 9_500; // ms between quote requests
 const SESSION_TYPES = ['EQUITY', 'ETF', 'INDEX'];
 const DAY_ONLY_WEEKDAYS = ['CURRENCY', 'FUTURE'];
 

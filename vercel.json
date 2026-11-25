@@ -11,7 +11,7 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; img-src 'self' data:; connect-src 'self' wss://stream.binance.com wss://data-stream.binance.vision; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "Referrer-Policy", "value": "no-referrer" },
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }

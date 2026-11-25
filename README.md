@@ -175,7 +175,7 @@ Prices come from public endpoints of Yahoo Finance and Binance. No key is needed
 
 What you download stays in your database, so intraday history keeps growing beyond these limits as you use the symbol.
 
-- Binance quotes refresh every few seconds. Yahoo quotes refresh about every 15 seconds and may be delayed by the exchange. When a price moves, the digits that changed turn green or red for a moment.
+- Binance prices stream live, about once per second. Yahoo quotes refresh about every 10 seconds and may be delayed by the exchange. Updates pause while the window is hidden. When a price moves, the digits that changed turn green or red for a moment.
 - Prices are adjusted for splits but not for dividends.
 - The Yahoo Finance endpoints are unofficial, and may change or limit requests at any time. Check each provider's terms before using their data for anything beyond personal use.
 
