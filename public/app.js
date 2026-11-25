@@ -4,6 +4,7 @@ import { mountTools } from './tools.js';
 import { mountIndicators } from './legend.js';
 import { withDefaults } from './indicators.js';
 import { createTicks, firstChange } from './ticks.js';
+import { logo } from './logos.js';
 import { createLive, applyTick } from './live.js';
 import { AUTO_GROUPS, arrange, autoGroup, groupOf, cleanName } from './groups.js';
 
@@ -333,7 +334,7 @@ function listRow(inst) {
     const del = el('button', 'del', '×');
     del.title = 'Remove from watchlist (history is kept)'; del.setAttribute('aria-label', `Remove ${inst.label} from watchlist`);
     del.onclick = e => { e.stopPropagation(); remove(inst); };
-    row.append(flag, el('span', 'sym', inst.label),
+    row.append(flag, logo(inst), el('span', 'sym', inst.label),
       priceCell(inst, q, d),
       el('span', tone(q.chg), q.chg == null ? '' : num(q.chg, d)),
       el('span', tone(q.pct), pct(q.pct)), el('span', tone(q.ext), pct(q.ext)), del);
@@ -378,7 +379,7 @@ function editRow(row, inst, del) {
   }
   box.append(btn('↑', 'Move up', () => { const n = near(-1); if (n) move(inst.id, n.id); }),
     btn('↓', 'Move down', () => { const n = near(1); if (n) move(n.id, inst.id); }));
-  row.replaceChildren(row.children[0], row.children[1], box, del);
+  row.replaceChildren(row.children[0], row.children[1], row.children[2], box, del);
 }
 
 async function cycleFlag(inst) {
@@ -449,7 +450,7 @@ function followLive() {
 function updateRow(id) {
   const row = document.querySelector(`.row[data-id="${CSS.escape(id)}"]`), inst = list.find(i => i.id === id), q = quotes[id];
   if (!row || !inst) return;
-  const d = decimalsFor(inst, q.last), [, , price, chg, change] = row.children;
+  const d = decimalsFor(inst, q.last), [, , , price, chg, change] = row.children;
   price.replaceWith(priceCell(inst, q, d));
   chg.textContent = q.chg == null ? '' : num(q.chg, d); chg.className = tone(q.chg);
   change.textContent = pct(q.pct); change.className = tone(q.pct);

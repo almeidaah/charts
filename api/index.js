@@ -2,10 +2,11 @@
 import pkg from '../package.json' with { type: 'json' };
 import { createAuth } from '../server/auth.js';
 import { createRemoteMarket } from '../server/remote-market.js';
-import { createRoutes, HttpError, readJson } from '../server/routes.js';
+import { createIcons, memoryCache } from '../server/icons.js';
+import { createRoutes, HttpError, readJson, sendResult } from '../server/routes.js';
 import { openTurso } from '../server/store-turso.js';
 
-export function createHandler(env, { fetchFn, providers } = {}) {
+export function createHandler(env, { fetchFn, providers, iconFetch } = {}) {
   let app = null;
   function boot() {
     if (app) return app;
@@ -37,7 +38,7 @@ export function createHandler(env, { fetchFn, providers } = {}) {
         binance: await attempt(() => market.candles({ id: 'binance:BTCUSDT', source: 'binance', symbol: 'BTCUSDT', type: 'CRYPTOCURRENCY', tz: 'UTC' }, '1d', { since: Math.floor(Date.now() / 1000) - 86400 })),
       }),
     };
-    return (app = { auth, routes: createRoutes({ store, market, extra }) });
+    return (app = { auth, routes: createRoutes({ store, market, icons: createIcons(memoryCache(), iconFetch), extra }) });
   }
 
   return async function handler(req, res) {
@@ -67,7 +68,7 @@ export function createHandler(env, { fetchFn, providers } = {}) {
       if (!auth.check(req.headers.cookie)) throw new HttpError(401, 'Sign in required');
       if (req.method === 'POST' && path === '/api/logout') return send(200, { ok: true }, { 'Set-Cookie': auth.logout() });
       if (!routes.has(req.method, path)) throw new HttpError(404, 'Not found');
-      send(200, await routes.run(req.method, path, { query: url.searchParams, body: () => readJson(req) }));
+      sendResult(res, await routes.run(req.method, path, { query: url.searchParams, body: () => readJson(req) }));
     } catch (e) {
       const status = e instanceof HttpError ? e.status : 502;
       if (status >= 500) console.error(req.method, req.url?.split('?')[0], e.message);

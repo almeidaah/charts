@@ -162,6 +162,27 @@ test('web: candles, tail, quotes and stats', async () => {
   } finally { s.close(); }
 });
 
+test('web: icons need the password and are sent as images', async () => {
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10]), Buffer.alloc(40)]);
+  const handler = createHandler({ APP_PASSWORD: PASSWORD, TURSO_DATABASE_URL: 'libsql://db.test', TURSO_AUTH_TOKEN: 'token' },
+    { fetchFn: fakeTurso().fetch, providers, iconFetch: async url => (/AAA/.test(url) ? new Response(png) : new Response('', { status: 404 })) });
+  const server = http.createServer(handler).listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}/api/`, json = { 'Content-Type': 'application/json' };
+  try {
+    assert.equal((await fetch(base + 'icon?id=yahoo:AAA')).status, 401);
+    const login = await fetch(base + 'login', { method: 'POST', headers: json, body: JSON.stringify({ password: PASSWORD }) });
+    const Cookie = login.headers.get('set-cookie').split(';')[0];
+    for (const id of ['yahoo:AAA', 'yahoo:BBB']) await fetch(base + 'watchlist', { method: 'POST', headers: { ...json, Cookie }, body: JSON.stringify({ id }) });
+    const ok = await fetch(base + 'icon?id=yahoo:AAA', { headers: { Cookie } });
+    assert.equal(ok.headers.get('content-type'), 'image/png');
+    assert.match(ok.headers.get('cache-control'), /private/);
+    assert.deepEqual(Buffer.from(await ok.arrayBuffer()), png);
+    assert.equal((await fetch(base + 'icon?id=yahoo:BBB', { headers: { Cookie } })).status, 404);
+    assert.equal((await fetch(base + 'icon?id=yahoo:ZZZ', { headers: { Cookie } })).status, 404);
+  } finally { server.close(); }
+});
+
 test('web: paths passed by the Vercel rewrite work too', async () => {
   const s = await site();
   try {

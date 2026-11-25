@@ -6,7 +6,8 @@ import pkg from '../package.json' with { type: 'json' };
 import { openDb } from './db.js';
 import { createLinkedStore } from './store-linked.js';
 import { createMarket, dayStats } from './market.js';
-import { createRoutes, HttpError, readJson } from './routes.js';
+import { createIcons } from './icons.js';
+import { createRoutes, HttpError, readJson, sendResult } from './routes.js';
 import { TIMEFRAMES } from './timeframes.js';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -48,6 +49,7 @@ async function syncAll() {
 
 const routes = createRoutes({
   store,
+  icons: createIcons(db.icons),
   market: {
     ...market,
     candles(inst, tf, opts) {
@@ -96,9 +98,7 @@ const server = http.createServer(async (req, res) => {
     if (origin && !ALLOWED_HOSTS.has(origin.replace('http://', ''))) throw new HttpError(403, 'Origin not allowed');
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (routes.has(req.method, url.pathname)) {
-      const data = await routes.run(req.method, url.pathname, { query: url.searchParams, body: () => readJson(req) });
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify(data));
+      sendResult(res, await routes.run(req.method, url.pathname, { query: url.searchParams, body: () => readJson(req) }));
     } else if (req.method === 'GET') await serveStatic(url, res);
     else throw new HttpError(404, 'Not found');
   } catch (e) {

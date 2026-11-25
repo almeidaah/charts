@@ -49,6 +49,9 @@ export function openDb(file) {
     );
     CREATE INDEX IF NOT EXISTS drawings_by_id ON drawings (id);
 
+    -- Symbol logos. data is NULL when no source has one; that is retried after a week.
+    CREATE TABLE IF NOT EXISTS icons (id TEXT PRIMARY KEY, type TEXT, data BLOB, at INTEGER NOT NULL);
+
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
 
@@ -84,6 +87,8 @@ export function openDb(file) {
     putDrawing: db.prepare(`INSERT INTO drawings (uid, id, data) VALUES (?, ?, ?)
       ON CONFLICT(uid) DO UPDATE SET data = excluded.data WHERE id = excluded.id`),
     delDrawing: db.prepare('DELETE FROM drawings WHERE id = ? AND uid = ?'),
+    getIcon: db.prepare('SELECT type, data, at FROM icons WHERE id = ?'),
+    putIcon: db.prepare('INSERT OR REPLACE INTO icons (id, type, data, at) VALUES (?, ?, ?, ?)'),
     bump: db.prepare(`INSERT INTO meta (key, value) VALUES ('rev', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)`),
     getMeta: db.prepare('SELECT value FROM meta WHERE key = ?'),
     putMeta: db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)'),
@@ -160,6 +165,14 @@ export function openDb(file) {
       for (const d of b.drawings) q.putDrawing.run(d.data.uid, d.id, JSON.stringify(d.data));
       for (const k of ['groups', 'indicators']) if (b.meta[k]) q.putMeta.run(k, JSON.stringify(b.meta[k]));
     }),
+    icons: {
+      get(id) {
+        const r = q.getIcon.get(id);
+        if (!r || (!r.data && Date.now() / 1000 - r.at > 7 * 86400)) return undefined;
+        return r.data ? { data: Buffer.from(r.data), type: r.type } : null;
+      },
+      put: (id, icon) => { q.putIcon.run(id, icon?.type ?? null, icon?.data ?? null, Math.floor(Date.now() / 1000)); },
+    },
     rev: () => Number(q.getMeta.get('rev')?.value ?? 0),
     meta: key => q.getMeta.get(key)?.value ?? null,
     setMeta: (key, value) => { q.putMeta.run(key, value); if (key === 'groups' || key === 'indicators') bump(); },

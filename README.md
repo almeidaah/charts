@@ -163,7 +163,7 @@ Everything is in the `data` folder next to the program:
 - **Share with the web version:** **More > Web sync** makes the desktop use the same watchlist, groups, drawings and indicators as your site. See the [web guide](docs/web.md#use-the-same-data-everywhere).
 - **From portable to installed:** copy `setup.exe` into the portable folder and run it from there. On the first install it brings along the `data` folder next to it.
 
-Charts sends requests only to Yahoo Finance and Binance, to search symbols and fetch prices. There is no telemetry.
+Charts contacts only Yahoo Finance and Binance, to search symbols and fetch prices, and Binance, Financial Modeling Prep, GitHub, Yahoo and CoinMarketCap, to fetch symbol logos once. There is no telemetry.
 
 ## Data sources and limits
 

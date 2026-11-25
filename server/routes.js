@@ -38,7 +38,7 @@ export function validBackup(b) {
     && (b.meta.indicators == null || isObj(b.meta.indicators));
 }
 
-export function createRoutes({ store, market, extra = {} }) {
+export function createRoutes({ store, market, icons, extra = {} }) {
   async function known(id) {
     const inst = id && await store.instrument(id);
     if (!inst) throw new HttpError(404, 'Unknown symbol');
@@ -99,6 +99,11 @@ export function createRoutes({ store, market, extra = {} }) {
       const n = x => Number(x.toPrecision(10));
       return { warning, candles: candles.map(r => [r.t, n(r.o), n(r.h), n(r.l), n(r.c), n(r.v)]) };
     },
+    'GET /api/icon': async ({ query }) => {
+      const icon = await icons(await known(query.get('id')));
+      if (!icon) throw new HttpError(404, 'No icon');
+      return { binary: icon.data, type: icon.type };
+    },
     'GET /api/drawings': async ({ query }) => store.drawings((await known(query.get('id'))).id),
     'POST /api/drawings': async ({ body }) => {
       const { id, put = [], del = [] } = await body();
@@ -135,6 +140,17 @@ export function createRoutes({ store, market, extra = {} }) {
     has: (method, path) => Object.hasOwn(routes, `${method} ${path}`),
     run: (method, path, ctx) => routes[`${method} ${path}`](ctx),
   };
+}
+
+// Sends what a route returned: JSON, or a cached image.
+export function sendResult(res, data) {
+  if (data?.binary) {
+    res.writeHead(200, { 'Content-Type': data.type, 'Cache-Control': 'private, max-age=2592000', 'X-Content-Type-Options': 'nosniff' });
+    res.end(data.binary);
+  } else {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(data));
+  }
 }
 
 // Reads the JSON body of a Node request (on Vercel it may already be parsed in req.body).
