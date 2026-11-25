@@ -2,16 +2,28 @@
 import { createClient, ProviderError } from './http.js';
 import { BASE_SECONDS } from '../timeframes.js';
 
-const HOST = 'https://api.binance.com';
+// The second host is the public data mirror, for regions the first one refuses.
+const HOSTS = ['https://api.binance.com', 'https://data-api.binance.vision'];
+let hostIndex = 0;
 const PAGE = 1000;
 export const QUOTE_TTL = 8_000;
 const MAX_CANDLES = 100_000; // cap per timeframe on the first download
-const getJson = createClient({ name: 'Binance', concurrency: 6 });
+const client = createClient({ name: 'Binance', concurrency: 6 });
+async function getJson(path) {
+  const used = hostIndex;
+  try { return await client(HOSTS[used] + path); }
+  catch (e) {
+    if (![403, 418, 451, 502].includes(e.status)) throw e;
+    const r = await client(HOSTS[1 - used] + path);
+    hostIndex = 1 - used;
+    return r;
+  }
+}
 
 let symbolsCache = null;
 async function allSymbols() {
   if (!symbolsCache || Date.now() - symbolsCache.at > 6 * 3600e3) {
-    const j = await getJson(`${HOST}/api/v3/exchangeInfo?permissions=SPOT&showPermissionSets=false`);
+    const j = await getJson(`/api/v3/exchangeInfo?permissions=SPOT&showPermissionSets=false`);
     symbolsCache = { at: Date.now(), list: j.symbols.filter(s => s.status === 'TRADING') };
   }
   return symbolsCache.list;
@@ -34,24 +46,27 @@ export async function search(text) {
 }
 
 export async function describe(symbol) {
-  const s = (await allSymbols()).find(x => x.symbol === symbol);
+  if (!/^[A-Z0-9]{2,20}$/.test(symbol)) throw new ProviderError('Binance: symbol not found', 404);
+  let s;
+  try { [s] = (await getJson(`/api/v3/exchangeInfo?symbol=${symbol}`)).symbols; }
+  catch (e) { if (e.status === 400) throw new ProviderError('Binance: symbol not found', 404); throw e; }
   if (!s) throw new ProviderError('Binance: symbol not found', 404);
   return toInst(s);
 }
 
 async function page(symbol, tf, startTime, limit = PAGE) {
-  const rows = await getJson(`${HOST}/api/v3/klines?${new URLSearchParams({ symbol, interval: tf, startTime, limit })}`);
+  const rows = await getJson(`/api/v3/klines?${new URLSearchParams({ symbol, interval: tf, startTime, limit })}`);
   return rows.map(k => ({ t: k[0] / 1000, o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5] }));
 }
 
-export async function history(inst, tf, since) {
+export async function history(inst, tf, since, { max = MAX_CANDLES } = {}) {
   const step = BASE_SECONDS[tf];
   const now = Math.floor(Date.now() / 1000);
   let start = since;
   if (start == null) {
     const [first] = await page(inst.symbol, tf, 0, 1);
     if (!first) return [];
-    start = Math.max(first.t, now - MAX_CANDLES * step);
+    start = Math.max(first.t, now - max * step);
   }
   const starts = [];
   for (let t = start; t <= now; t += PAGE * step) starts.push(t);
@@ -66,7 +81,7 @@ export async function quotes(instruments) {
   if (!instruments.length) return {};
   const symbols = JSON.stringify(instruments.map(i => i.symbol));
   try {
-    const rows = await getJson(`${HOST}/api/v3/ticker/tradingDay?symbols=${encodeURIComponent(symbols)}`);
+    const rows = await getJson(`/api/v3/ticker/tradingDay?symbols=${encodeURIComponent(symbols)}`);
     return Object.fromEntries(rows.map(r => [`binance:${r.symbol}`, {
       last: +r.lastPrice, chg: +r.priceChange, pct: +r.priceChangePercent, ext: null,
       time: Math.floor(Date.now() / 1000),
