@@ -48,7 +48,7 @@ const RANGES = [ // label, timeframe, days
 const FLAGS = ['', 'red', 'blue', 'green', 'amber', 'violet'];
 const TYPE_NAME = { EQUITY: 'Stock', ETF: 'ETF', INDEX: 'Index', CURRENCY: 'Forex', CRYPTOCURRENCY: 'Crypto', FUTURE: 'Future', MUTUALFUND: 'Fund' };
 
-const state = { id: null, tf: '1d', type: 'candles', log: true, side: true, draw: {}, styles: {} };
+const state = { id: null, tf: '1d', type: 'candles', log: true, side: true, details: true, draw: {}, styles: {} };
 try { Object.assign(state, JSON.parse(localStorage.getItem('view') ?? '{}')); } catch { /* first run */ }
 if (!TFS.includes(state.tf)) state.tf = '1d';
 const save = () => { try { localStorage.setItem('view', JSON.stringify(state)); } catch { /* no storage */ } };
@@ -710,7 +710,11 @@ $('loginForm').onsubmit = async e => {
   } catch (err) { $('loginError').textContent = err.message; $('loginError').hidden = false; }
 };
 
+$('detailsBtn').onclick = () => { state.details = !state.details; save(); renderSide(); };
+
 function renderSide() {
+  $('detailsBtn').setAttribute('aria-expanded', state.details);
+  $('side').classList.toggle('nodetails', !state.details);
   document.querySelector('main').classList.toggle('noside', !state.side);
   $('sideBtn').setAttribute('aria-pressed', state.side);
 }

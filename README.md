@@ -97,6 +97,7 @@ On the first run Charts adds a small starter watchlist and downloads its daily h
 - **Reorder:** drag a row.
 - **Flag:** click the left edge of a row to cycle through colors.
 - **Groups:** click a group title to collapse it, or drag the title to reorder groups. Drop a row on another group to move it. To create a group, select a symbol and choose **New group…** under the watchlist. The **Groups** button turns grouping on and off.
+- **Details:** click **Details** under the list to show or hide the panel with the price, ranges and group of the selected symbol.
 - **Browse:** use <kbd>↑</kbd> and <kbd>↓</kbd> to go through the list.
 - **Update** refreshes the daily history of every symbol.
 
