@@ -19,7 +19,7 @@ export const TOOLS = {
   short: { name: 'Short position', n: 1 },
   prange: { name: 'Price range', n: 2 },
   rect: { name: 'Rectangle', n: 2 },
-  brush: { name: 'Brush', n: 0 },
+  brush: { name: 'Brush', n: 0 }, // no longer in the toolbar; kept for drawings made before
   text: { name: 'Text', n: 1 },
   emoji: { name: 'Emoji', n: 1 },
 };
@@ -59,7 +59,7 @@ export class Layer {
   constructor(chart, { save, load, onSelect, onTool, toast }) {
     Object.assign(this, { chart, saveApi: save, loadApi: load, onSelect, onTool, toast });
     this.items = []; this.sel = null; this.tool = null; this.draft = null; this.drag = null;
-    this.measure = null; this.zoomBox = null; this.emoji = '🚀';
+    this.measure = null; this.emoji = '🚀';
     this.opts = { keep: false, hidden: false };
     this.styles = {};
     this.stacks = new Map(); // undo/redo per symbol
@@ -155,7 +155,7 @@ export class Layer {
     if (this.sel === d) return;
     this.sel = d; this.onSelect(d); this.chart.draw();
   }
-  cancel() { this.draft = null; this.zoomBox = null; this.cancelDrag(); this.closeText?.(); if (this.measure?.active) this.measure = null; this.chart.draw(); }
+  cancel() { this.draft = null; this.cancelDrag(); this.closeText?.(); if (this.measure?.active) this.measure = null; this.chart.draw(); }
   cancelDrag() {
     if (this.drag) { Object.assign(this.drag.d, clone(this.drag.before)); this.drag = null; this.chart.draw(); }
     if (this.draft?.tool === 'brush') this.draft = null;
@@ -177,7 +177,6 @@ export class Layer {
   // ---------- mouse ----------
   down(p, e) {
     this.closeText?.();
-    if (this.tool === 'zoom') { this.zoomBox = { x0: p.x, y0: p.y, x1: p.x, y1: p.y }; return true; }
     if (this.measure?.active) { this.measure.b = this.#pt(p); this.measure.active = false; this.measure.at = null; if (this.tool === 'measure') this.setToolKeep(); return true; }
     if (this.tool === 'measure' || (!this.tool && e.shiftKey)) {
       const a = this.#pt(p);
@@ -214,8 +213,7 @@ export class Layer {
   }
 
   move(p, e) {
-    if (this.zoomBox) { this.zoomBox.x1 = p.x; this.zoomBox.y1 = p.y; }
-    else if (this.measure?.active) this.measure.b = this.#pt(p);
+    if (this.measure?.active) this.measure.b = this.#pt(p);
     else if (this.draft?.tool === 'brush') {
       const last = this.lastBrush ?? this.downAt;
       if (Math.hypot(p.x - last.x, p.y - last.y) >= 3 && this.draft.pts.length < 4000) { this.draft.pts.push(this.#pt(p, true)); this.lastBrush = p; }
@@ -226,10 +224,7 @@ export class Layer {
   }
 
   up(p, e) {
-    if (this.zoomBox) {
-      const z = this.zoomBox; this.zoomBox = null;
-      if (Math.abs(z.x1 - z.x0) > 8 && Math.abs(z.y1 - z.y0) > 8) { this.chart.zoomTo(z.x0, z.x1, z.y0, z.y1); this.setTool(null); }
-    } else if (this.measure?.active) {
+    if (this.measure?.active) {
       const at = this.measure.at;
       if (Math.hypot(p.x - at.x, p.y - at.y) > 6) { this.measure.active = false; if (this.tool === 'measure') this.setToolKeep(); }
     } else if (this.draft) {
@@ -281,7 +276,6 @@ export class Layer {
     if (d?.tool === 'text' && !d.locked) this.editText(d);
   }
   cursor(p) {
-    if (this.tool === 'zoom') return 'zoom-in';
     if (this.tool || this.measure?.active) return 'crosshair';
     if (this.drag) return this.drag.h ? 'default' : 'move';
     if (this.opts.hidden) return null;
@@ -371,11 +365,6 @@ export class Layer {
       if (b && (this.sel.tool === 'text' || this.sel.tool === 'emoji')) { ctx.strokeStyle = ACCENT; ctx.lineWidth = 1; ctx.strokeRect(b.x - 4, b.y - 4, b.w + 8, b.h + 8); }
     }
     if (this.measure) this.#drawMeasure(ctx);
-    if (this.zoomBox) {
-      const z = this.zoomBox, b = box({ x: z.x0, y: z.y0 }, { x: z.x1, y: z.y1 });
-      ctx.fillStyle = ACCENT + '22'; ctx.strokeStyle = ACCENT; ctx.lineWidth = 1;
-      ctx.fillRect(b.x, b.y, b.w, b.h); ctx.strokeRect(b.x, b.y, b.w, b.h);
-    }
     ctx.setLineDash([]); ctx.textBaseline = 'alphabetic';
   }
 

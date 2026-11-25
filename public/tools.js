@@ -16,11 +16,9 @@ const ICONS = {
   short: '<path d="M4 20h16v-9H4zM4 11V5h16v6"/><path d="M12 13v4.500M10 15.500l2 2 2-2"/>',
   prange: '<path d="M5 4h14M5 20h14M12 6v12M9.500 8.500 12 6l2.500 2.500M9.500 15.500 12 18l2.500-2.500"/>',
   rect: `<path d="M7 6h10M18 7v10M17 18H7M6 17V7"/>${dot(6, 6)}${dot(18, 6)}${dot(6, 18)}${dot(18, 18)}`,
-  brush: '<path d="M20 4c-5 2-8.500 5.500-10 9l2 2c3.500-1.500 6.500-5 8-11zM9.500 13.500C6 13.500 6.500 18 3.500 19c3 1.500 8 .5 8-3.500"/>',
   text: '<path d="M5 7V5h14v2M12 5v14M9 19h6"/>',
   emoji: '<circle cx="12" cy="12" r="8"/><path d="M8.500 14c1.500 2.500 5.500 2.500 7 0M9.500 9.500v.6M14.500 9.500v.6"/>',
   measure: '<path d="m3.500 15.500 12-12 5 5-12 12zM7 12l2 2M10 9l2.500 2.500M13 6l2 2"/>',
-  zoom: '<circle cx="11" cy="11" r="6.500"/><path d="m16 16 5 5M11 8v6M8 11h6"/>',
   keep: '<path d="m4 20 1-4L15 6l3 3L8 19zM13 8l3 3"/><path d="M15 17h6v4h-6zM16.500 17v-1.500a1.500 1.500 0 0 1 3 0V17"/>',
   hidden: '<path d="M3 12c4-7 14-7 18 0-4 7-14 7-18 0z"/><circle cx="12" cy="12" r="2.600"/><path d="M4 20 20 4"/>',
   undo: '<path d="M8 5 4 9l4 4M4 9h10a5 5 0 0 1 0 10H9"/>',
@@ -66,9 +64,8 @@ export function mountTools({ layer, nav, bar, host, toast, persist }) {
   });
   nav.append(
     btn('cursor', 'Cursor (Esc)', () => layer.setTool(null)), gap(),
-    ...['trend', 'hline', 'hray', 'vline', 'channel', 'fib', 'xabcd', 'long', 'short', 'prange', 'rect', 'brush', 'text', 'emoji'].map(tool), gap(),
-    btn('measure', 'Measure (or Shift + drag)', () => layer.setTool(layer.tool === 'measure' ? null : 'measure')),
-    btn('zoom', 'Zoom into an area', () => layer.setTool(layer.tool === 'zoom' ? null : 'zoom')), gap(),
+    ...['trend', 'hline', 'hray', 'vline', 'channel', 'fib', 'xabcd', 'long', 'short', 'prange', 'rect', 'text', 'emoji'].map(tool), gap(),
+    btn('measure', 'Measure (or Shift + drag)', () => layer.setTool(layer.tool === 'measure' ? null : 'measure')), gap(),
     toggle('keep', 'Keep drawing with the same tool'),
     toggle('hidden', 'Hide all drawings'), gap(),
     btn('undo', 'Undo (Ctrl+Z)', () => layer.undo()),
@@ -85,7 +82,7 @@ export function mountTools({ layer, nav, bar, host, toast, persist }) {
     const t = layer.tool ?? 'cursor';
     for (const [k, b] of Object.entries(buttons)) {
       if (k in opts) b.setAttribute('aria-pressed', opts[k]);
-      else if (k in TOOLS || ['cursor', 'measure', 'zoom'].includes(k)) b.setAttribute('aria-pressed', k === t);
+      else if (k in TOOLS || ['cursor', 'measure'].includes(k)) b.setAttribute('aria-pressed', k === t);
     }
   }
 

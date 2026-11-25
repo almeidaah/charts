@@ -20,7 +20,7 @@ Local-first charting for stocks, ETFs, indices, forex, futures and crypto on Win
 - **13 timeframes**, from 1 minute to 1 month, plus one-click ranges from 1 day to all history.
 - **6 chart types:** candles, hollow candles, bars, line, area and Heikin Ashi. Log or linear scale.
 - **Indicators:** four configurable moving averages (EMA 8, SMA 20, 50 and 200 by default), RSI 14 with its average, and volume.
-- **Drawings** saved per symbol: trend line, horizontal and vertical lines, horizontal ray, parallel channel, Fibonacci retracement, XABCD, long and short positions with risk/reward, price range, rectangle, brush, text and emoji. Undo and redo included.
+- **Drawings** saved per symbol: trend line, horizontal and vertical lines, horizontal ray, parallel channel, Fibonacci retracement, XABCD, long and short positions with risk/reward, price range, rectangle, text and emoji. Undo and redo included.
 - **Works offline** with everything already downloaded.
 - **On the iPhone and the web**, if you publish your own private site. See the [web guide](docs/web.md).
 

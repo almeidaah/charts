@@ -127,16 +127,6 @@ export class Chart {
     this.setAuto(true);
     return t >= this.rows[0].t - 7 * 86400;
   }
-  // Fits a screen rectangle (zoom tool).
-  zoomTo(x0, x1, y0, y1) {
-    const i0 = this.idx(Math.min(x0, x1)), i1 = this.idx(Math.max(x0, x1));
-    const v = y => this.f(this.price(y));
-    const top = v(Math.min(y0, y1)), bottom = v(Math.max(y0, y1));
-    this.barW = this.#clampBar(this.plotW / Math.max(i1 - i0, 2));
-    this.right = i1;
-    this.y0 = bottom; this.y1 = top;
-    this.setAuto(false);
-  }
   #clampBar(w) { return Math.min(80, Math.max(0.15, w)); }
   #clampRight() {
     const span = this.plotW / this.barW, n = this.rows.length;

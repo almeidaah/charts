@@ -101,9 +101,9 @@ dialog::backdrop { background: #000a; }
 #toast.show { opacity: 1; }
 
 #tools { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 4px; border-right: 1px solid var(--line); overflow-y: auto; scrollbar-width: none; flex: none; }
-#tools button { padding: 3px; width: 34px; height: 29px; flex: none; display: grid; place-items: center; }
+#tools button { padding: 0; width: 34px; flex: 0 1 30px; min-height: 22px; display: grid; place-items: center; }
 #tools button[aria-pressed="true"] { background: var(--raise); }
-#tools hr { width: 24px; border: 0; border-top: 1px solid var(--line); margin: 4px 0; flex: none; }
+#tools hr { width: 24px; border: 0; border-top: 1px solid var(--line); margin: 3px 0; flex: none; }
 .ind { display: flex; align-items: center; gap: 8px; font-size: 13px; min-height: 22px; width: fit-content; pointer-events: auto; }
 .ind.off .indname, .ind.off .indval { opacity: .45; }
 .indname { color: var(--muted); } .indval { font-weight: 600; }
@@ -142,7 +142,6 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .indfoot { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 12px; }
 .primary { background: var(--accent); color: #17120a; font-weight: 600; }
 .primary:hover { background: #eebb55; color: #17120a; }
-@media (max-height: 820px) { #tools { display: grid; grid-template-columns: 34px 34px; align-content: start; justify-items: center; } #tools hr { grid-column: 1 / -1; width: 100%; } }
 
 .phone, #tabs { display: none; }
 .cloud #syncBtn { display: none; }
@@ -197,7 +196,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
   .canvas { min-height: 0; }
   #tools { display: none; }
   body.drawing #tools { display: flex; flex-direction: row; overflow-x: auto; border-right: 0; border-top: 1px solid var(--line); padding: 4px 6px; }
-  #tools button { width: 44px; height: 42px; }
+  #tools button { width: 44px; height: 42px; flex: none; }
   #tools hr { width: 0; height: 24px; border-top: 0; border-left: 1px solid var(--line); margin: 0 4px; align-self: center; }
   footer { padding: 4px 6px; scrollbar-width: none; }
   footer button { padding: 9px 12px; }
