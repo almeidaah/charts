@@ -15,6 +15,8 @@ Prices are not stored. They come from Yahoo Finance and Binance on each request,
 
 Keep both private. Never commit them.
 
+> **Shortcut:** you can skip this step and let Vercel create the database. After step 2, open **Storage** in the Vercel project, create a **Turso Cloud** database and connect it to the project with **Production** checked. Vercel adds both database settings by itself, so you never copy the token. Then redeploy.
+
 ## 2. Publish the site
 
 1. Fork this repository, or use your own copy.
