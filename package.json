@@ -1,0 +1,18 @@
+{
+  "name": "charts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first charts for stocks, crypto, forex and indices on Windows",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/almeidaah/charts.git"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node server/index.js --open",
+    "test": "node --test"
+  }
+}

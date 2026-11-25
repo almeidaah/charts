@@ -1,0 +1,14 @@
+# User data: watchlist, history, drawings. Never commit it.
+data/
+*.db
+*.db-*
+
+# Build output
+dist/
+runtime/
+*.exe
+*.zip
+
+node_modules/
+.claude/
+.wip-web/

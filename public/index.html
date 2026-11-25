@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en" translate="no">
+<head>
+  <meta charset="utf-8">
+  <meta name="google" content="notranslate">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Charts</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%2312151c'/><path d='M4.5 3v10M11.5 2v9' stroke='%23e0a83a' stroke-width='1.2'/><rect x='3' y='6' width='3' height='5' fill='%23e0a83a'/><rect x='10' y='4' width='3' height='5' fill='%23e0a83a'/></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <button id="symbolBtn" class="symbol" title="Search symbol (or just start typing)"><b id="symbolLabel">—</b></button>
+    <div id="tfs" class="group" role="group" aria-label="Timeframe"></div>
+    <select id="type" aria-label="Chart type">
+      <option value="candles">Candles</option>
+      <option value="hollow">Hollow candles</option>
+      <option value="bars">Bars</option>
+      <option value="line">Line</option>
+      <option value="area">Area</option>
+      <option value="heikin">Heikin Ashi</option>
+    </select>
+    <div class="group">
+      <button id="log" aria-pressed="true">Log</button>
+      <button id="auto" aria-pressed="true" title="Auto-fit price scale">Auto</button>
+    </div>
+    <button id="indBtn">Indicators</button>
+    <span class="spacer"></span>
+    <button id="sideBtn" aria-pressed="true">Watchlist</button>
+  </header>
+
+  <main>
+    <section class="chart">
+      <div class="stage">
+        <nav id="tools" aria-label="Drawing tools"></nav>
+        <div class="canvas" id="stage">
+          <canvas id="chart" aria-label="Price chart"></canvas>
+          <div class="legend">
+            <div class="title"><span id="lgName"></span><span id="lgInfo"></span></div>
+            <div id="lgOhlc" class="ohlc"></div>
+            <div id="lgInd"></div>
+          </div>
+          <div id="lgRsi" class="legend"></div>
+          <div id="selbar" hidden></div>
+          <p id="message" hidden></p>
+        </div>
+      </div>
+      <footer>
+        <div id="ranges" class="group" role="group" aria-label="Range"></div>
+        <label class="goto">Go to <input id="goto" type="date"></label>
+        <span class="spacer"></span>
+        <span id="coverage"></span>
+        <span id="clock"></span>
+      </footer>
+    </section>
+
+    <aside id="side">
+      <div class="sidehead"><h2>Watchlist</h2><span id="syncInfo"></span>
+        <button id="groupBtn" aria-pressed="true" title="Group the watchlist by asset type">Groups</button>
+        <button id="syncBtn" title="Update daily history for all symbols">Update</button>
+        <button id="addBtn">Add</button>
+      </div>
+      <div class="rows head"><span></span><span>Symbol</span><span>Last</span><span>Chg</span><span>Chg%</span><span title="Pre-market and after hours">Ext</span></div>
+      <div id="list" class="list"></div>
+      <div id="details" class="details"></div>
+      <div id="groupBox" class="groupbox"></div>
+    </aside>
+  </main>
+
+  <dialog id="search">
+    <input id="q" placeholder="Symbol or name: PETR4, NVDA, BTCUSDT, gold…" autocomplete="off" spellcheck="false">
+    <div id="filters" class="group"></div>
+    <div id="results"></div>
+  </dialog>
+  <dialog id="indDialog" aria-label="Indicators"></dialog>
+  <div id="toast" role="status"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
