@@ -1,4 +1,5 @@
 // Single Vercel function: handles everything under /api/*.
+import pkg from '../package.json' with { type: 'json' };
 import { createAuth } from '../server/auth.js';
 import { createRemoteMarket } from '../server/remote-market.js';
 import { createRoutes, HttpError, readJson } from '../server/routes.js';
@@ -22,7 +23,7 @@ export function createHandler(env, { fetchFn, providers } = {}) {
     const market = createRemoteMarket(store, providers);
     const attempt = async fn => { const t = Date.now(); try { await fn(); return { ok: true, ms: Date.now() - t }; } catch (e) { return { ok: false, error: e.message }; } };
     const extra = {
-      'GET /api/status': () => ({ cloud: true, sync: { running: false, seeding: false, done: 0, total: 0, errors: [] }, coverage: [] }),
+      'GET /api/status': () => ({ version: pkg.version, cloud: true, sync: { running: false, seeding: false, done: 0, total: 0, errors: [] }, coverage: [] }),
       'GET /api/quotes': async ({ query }) => {
         const list = await store.watchlist();
         const focus = list.find(i => i.id === query.get('focus'));

@@ -2,6 +2,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join, extname, normalize, sep } from 'node:path';
+import pkg from '../package.json' with { type: 'json' };
 import { openDb } from './db.js';
 import { createLinkedStore } from './store-linked.js';
 import { createMarket, dayStats } from './market.js';
@@ -60,7 +61,7 @@ const routes = createRoutes({
       const list = db.watchlist(), data = await market.quotes(list);
       return Object.fromEntries(list.map(i => [i.id, { ...data[i.id], ...dayStats(db.lastCandles(i.id, '1d', 366)) }]));
     },
-    'GET /api/status': () => ({ sync: syncJob, coverage: db.coverage(), link: store.linkStatus() }),
+    'GET /api/status': () => ({ version: pkg.version, sync: syncJob, coverage: db.coverage(), link: store.linkStatus() }),
     'POST /api/link': async ({ body }) => {
       const { url, password } = await body();
       if (typeof url !== 'string' || typeof password !== 'string') throw new HttpError(400, 'Enter the address and the password');

@@ -60,6 +60,7 @@ test('web: everything needs the password', async () => {
     for (const flag of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/']) assert.ok(ok.set.includes(flag), flag);
     assert.deepEqual((await s.call('GET', '/api/watchlist')).data, []);
     assert.equal((await s.call('GET', '/api/ping')).data.cloud, true);
+    assert.match((await s.call('GET', '/api/status')).data.version, /^\d+\.\d+\.\d+$/);
   } finally { s.close(); }
 });
 

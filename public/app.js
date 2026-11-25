@@ -469,6 +469,7 @@ async function refreshStatus() {
   try {
     const s = await api('status');
     cloud = !!s.cloud;
+    for (const v of document.querySelectorAll('.version')) v.textContent = s.version ? `v${s.version}` : '';
     document.body.classList.toggle('cloud', cloud);
     if (cloud) { $('syncInfo').textContent = list.length === 1 ? '1 symbol' : `${list.length} symbols`; return; }
     coverage = s.coverage; link = s.link;
