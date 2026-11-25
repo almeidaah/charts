@@ -14,8 +14,10 @@ async function api(path, { method = 'GET', json } = {}) {
     res = await fetch('/api/' + path, {
       method, headers: json ? { 'Content-Type': 'application/json' } : {}, body: json && JSON.stringify(json),
     });
-  } catch { throw new Error('The local server is not responding. Open Charts again.'); }
-  const data = await res.json();
+  } catch { throw new Error(location.protocol === 'https:' ? 'No connection.' : 'The local server is not responding. Open Charts again.'); }
+  let data;
+  try { data = await res.json(); } catch { throw new Error(`Error ${res.status}`); }
+  if (res.status === 401) showLogin();
   if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
   return data;
 }
@@ -42,7 +44,28 @@ try { Object.assign(state, JSON.parse(localStorage.getItem('view') ?? '{}')); } 
 if (!TFS.includes(state.tf)) state.tf = '1d';
 const save = () => { try { localStorage.setItem('view', JSON.stringify(state)); } catch { /* no storage */ } };
 
-let list = [], quotes = {}, coverage = [], current = null, loadSeq = 0;
+let list = [], quotes = {}, coverage = [], current = null, loadSeq = 0, cloud = false, editing = false;
+
+// ---------- phone ----------
+const phone = matchMedia('(max-width: 860px)');
+function setTab(tab) {
+  document.body.dataset.tab = tab;
+  for (const b of document.querySelectorAll('#tabs button')) b.setAttribute('aria-pressed', b.dataset.tab === tab);
+  if (tab === 'chart') chart.resize();
+}
+for (const b of document.querySelectorAll('#tabs button')) b.onclick = () => setTab(b.dataset.tab);
+setTab('list');
+
+// ---------- history cache (web version): opens instantly, then updates ----------
+const histKey = (id, tf) => `/hist?${new URLSearchParams({ id, tf })}`;
+async function cachedHistory(id, tf) {
+  if (!cloud || !window.caches) return null;
+  try { return await (await (await caches.open('history')).match(histKey(id, tf)))?.json() ?? null; } catch { return null; }
+}
+async function cacheHistory(id, tf, candles) {
+  if (!cloud || !window.caches || !candles.length) return;
+  try { await (await caches.open('history')).put(histKey(id, tf), new Response(JSON.stringify(candles), { headers: { 'Content-Type': 'application/json' } })); } catch { /* no space */ }
+}
 
 // ---------- formats ----------
 function decimalsFor(inst, price) {
@@ -106,10 +129,22 @@ async function load(range) {
   chart.setData([], { intraday: isIntraday(tf), decimals: 2, seconds: TF_SECONDS[tf] });
   renderHeader();
   message('Loading history…');
+  let cachedRows = null;
   try {
+    const saved = await cachedHistory(inst.id, tf);
+    if (seq !== loadSeq) return;
+    if (saved?.length) {
+      cachedRows = parse(saved);
+      message(null);
+      chart.setData(cachedRows, { intraday: isIntraday(tf), decimals: decimalsFor(inst, cachedRows.at(-1).c), seconds: TF_SECONDS[tf] });
+      if (range) applyRange(range);
+      renderCoverage();
+    }
     const { candles, warning } = await api(`candles?${new URLSearchParams({ id: inst.id, tf })}`);
     if (seq !== loadSeq) return;
     const rows = parse(candles);
+    cacheHistory(inst.id, tf, candles);
+    if (cachedRows && rows.length) { chart.refresh(rows); renderCoverage(); return; }
     message(rows.length ? null : 'The data source has nothing for this timeframe.');
     chart.setData(rows, { intraday: isIntraday(tf), decimals: decimalsFor(inst, rows.at(-1)?.c), seconds: TF_SECONDS[tf] });
     if (warning) toast(`Showing saved data. ${warning}`);
@@ -117,7 +152,10 @@ async function load(range) {
     setTimeout(() => { if (seq === loadSeq) poll(); }, 1500); // picks up anything that arrived late
     renderCoverage();
     refreshStatus();
-  } catch (e) { if (seq === loadSeq) message(e.message); }
+  } catch (e) {
+    if (seq !== loadSeq) return;
+    if (cachedRows) toast(`Showing saved data. ${e.message}`); else message(e.message);
+  }
 }
 
 async function poll() {
@@ -157,6 +195,8 @@ function select(id) {
 }
 
 function setTf(tf, range) { state.tf = tf; save(); renderTfs(); load(range); }
+$('tfSel').replaceChildren(...TFS.map(tf => new Option(TF_NAME[tf] ?? tf, tf)));
+$('tfSel').onchange = e => setTf(e.target.value);
 
 // ---------- header ----------
 function renderHeader() {
@@ -167,6 +207,7 @@ function renderHeader() {
   document.title = current ? `${current.label}${q?.last != null ? ' ' + num(q.last, decimalsFor(current, q.last)) : ''}` : 'Charts';
 }
 function renderTfs() {
+  $('tfSel').value = state.tf;
   $('tfs').replaceChildren(...TFS.map(tf => {
     const b = el('button', '', TF_NAME[tf] ?? tf);
     b.setAttribute('aria-pressed', tf === state.tf); b.onclick = () => setTf(tf);
@@ -271,12 +312,48 @@ function listRow(inst) {
       el('span', '', q.last == null ? (q.error ? 'error' : '…') : num(q.last, d)),
       el('span', tone(q.chg), q.chg == null ? '' : num(q.chg, d)),
       el('span', tone(q.pct), pct(q.pct)), el('span', tone(q.ext), pct(q.ext)), del);
-    row.onclick = () => select(inst.id);
+    row.onclick = () => { if (!editing) open(inst.id); };
+    if (editing) editRow(row, inst, del);
     row.ondragstart = e => { e.dataTransfer.setData('text/plain', inst.id); e.dataTransfer.effectAllowed = 'move'; };
     row.ondragover = e => { e.preventDefault(); row.classList.add('drop'); };
     row.ondragleave = () => row.classList.remove('drop');
     row.ondrop = e => { e.preventDefault(); row.classList.remove('drop'); move(e.dataTransfer.getData('text/plain'), inst.id); };
     return row;
+}
+
+// Opening a symbol from the list also shows the chart on phones.
+function open(id) {
+  setTab('chart');
+  if (id !== state.id || !chart.raw.length) select(id);
+}
+
+// Edit mode replaces hover and drag, which touch screens do not have.
+function editRow(row, inst, del) {
+  row.classList.add('editing');
+  row.draggable = false;
+  const btn = (text, title, run) => { const b = el('button', 'step', text); b.title = title; b.setAttribute('aria-label', `${title}: ${inst.label}`); b.onclick = e => { e.stopPropagation(); run(); }; return b; };
+  const near = d => {
+    const rows = groups.on ? arranged().find(g => g.name === groupOf(inst)).items : list;
+    return rows[rows.indexOf(inst) + d];
+  };
+  const box = el('span', 'editbox');
+  if (groups.on) {
+    const s = el('select');
+    s.setAttribute('aria-label', `Group of ${inst.label}`);
+    for (const n of new Set([...arranged().map(g => g.name), ...AUTO_GROUPS])) s.append(new Option(n, n));
+    s.append(new Option('New group…', '\0new'));
+    s.value = groupOf(inst);
+    s.onclick = e => e.stopPropagation();
+    s.onchange = () => {
+      if (s.value !== '\0new') return setGroup(inst, s.value);
+      const name = cleanName(prompt('Group name') ?? '');
+      if (name) setGroup(inst, name); else renderList();
+    };
+    box.append(s);
+  }
+  box.append(btn('↑', 'Move up', () => { const n = near(-1); if (n) move(inst.id, n.id); }),
+    btn('↓', 'Move down', () => { const n = near(1); if (n) move(n.id, inst.id); }));
+  row.replaceChildren(row.children[0], row.children[1], box, del);
 }
 
 async function cycleFlag(inst) {
@@ -330,12 +407,15 @@ function renderDetails() {
 
 async function refreshQuotes() {
   if (document.hidden || !list.length) return;
-  try { quotes = await api('quotes'); renderList(); renderDetails(); renderHeader(); } catch { /* next cycle */ }
+  try { quotes = await api(`quotes?${new URLSearchParams({ focus: current?.id ?? '' })}`); if (!editing) renderList(); renderDetails(); renderHeader(); } catch { /* next cycle */ }
 }
 
 async function refreshStatus() {
   try {
     const s = await api('status');
+    cloud = !!s.cloud;
+    document.body.classList.toggle('cloud', cloud);
+    if (cloud) { $('syncInfo').textContent = list.length === 1 ? '1 symbol' : `${list.length} symbols`; return; }
     coverage = s.coverage;
     const daily = new Set(coverage.filter(c => c.tf === '1d').map(c => c.id));
     const ready = list.filter(i => daily.has(i.id)).length;
@@ -396,14 +476,14 @@ function renderResults(note) {
 async function choose(r) {
   $('search').close();
   if (!list.some(i => i.id === r.id)) {
-    toast("Adding " + r.label + '…');
+    toast(`Adding ${r.label}…`);
     try {
       await api('watchlist', { method: 'POST', json: { id: r.id } });
       list = await api('watchlist');
       refreshQuotes();
     } catch (e) { toast(`Could not add ${r.label}: ${e.message}`); return; }
   }
-  select(r.id);
+  open(r.id);
 }
 $('q').oninput = queueSearch;
 $('q').onkeydown = e => {
@@ -413,6 +493,7 @@ $('q').onkeydown = e => {
     renderResults();
   } else if (e.key === 'Enter') { e.preventDefault(); if (shown[sel]) choose(shown[sel]); }
 };
+$('searchClose').onclick = () => $('search').close();
 $('search').onclick = e => { if (e.target === $('search')) $('search').close(); };
 
 // ---------- controls ----------
@@ -428,6 +509,80 @@ $('goto').onchange = e => {
   if (!e.target.value) return;
   if (!chart.goTo(Date.parse(e.target.value + 'T00:00:00Z') / 1000)) toast('History for this timeframe starts after that date.');
 };
+$('drawBtn').onclick = () => {
+  const on = document.body.classList.toggle('drawing');
+  $('drawBtn').setAttribute('aria-pressed', on);
+  chart.resize();
+  if (!on) layer.setTool(null);
+};
+$('editBtn').onclick = () => { editing = !editing; $('editBtn').setAttribute('aria-pressed', editing); $('editBtn').textContent = editing ? 'Done' : 'Edit'; renderList(); };
+
+// ---------- backup and session ----------
+async function exportBackup() {
+  try {
+    const data = await api('backup');
+    const a = el('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
+    a.download = `charts-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  } catch (e) { toast(e.message); }
+}
+$('backupFile').onchange = async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); } catch { toast('This file is not a Charts backup'); return; }
+  try {
+    const r = await api('backup', { method: 'POST', json: data });
+    $('moreDialog').close();
+    toast(`Imported ${r.watchlist} symbols and ${r.drawings} drawings.`);
+    await start();
+  } catch (err) { toast(err.message); }
+};
+$('moreBtn').onclick = () => {
+  const d = $('moreDialog'), item = (text, sub, run) => { const b = el('button', 'item'); b.append(el('b', '', text), el('span', '', sub)); b.onclick = run; return b; };
+  const parts = [el('h2', '', 'More'),
+    item('Export backup', 'Watchlist, groups, drawings and indicators in one file', exportBackup),
+    item('Import backup', 'Adds the contents of a backup file to what is here', () => $('backupFile').click())];
+  if (cloud) {
+    const out = el('p', 'sub');
+    parts.push(item('Connection test', 'Checks the database and the price providers', async () => {
+      out.textContent = 'Testing…';
+      try {
+        const r = await api('selftest');
+        out.textContent = Object.entries(r).map(([k, v]) => `${k}: ${v.ok ? `ok, ${v.ms} ms` : v.error}`).join('\n');
+      } catch (e) { out.textContent = e.message; }
+    }), out, item('Sign out', 'On this device', async () => {
+      try { await api('logout', { method: 'POST', json: {} }); } catch { /* already out */ }
+      try { await caches.delete('history'); } catch { /* none */ }
+      location.reload();
+    }));
+  }
+  const close = el('button', 'primary', 'Close'); close.onclick = () => d.close();
+  d.replaceChildren(...parts, close);
+  d.showModal();
+};
+$('moreDialog').onclick = e => { if (e.target === $('moreDialog')) $('moreDialog').close(); };
+
+function showLogin() {
+  if ($('loginDialog').open) return;
+  for (const d of document.querySelectorAll('dialog[open]')) d.close();
+  $('loginDialog').showModal();
+}
+$('loginDialog').oncancel = e => e.preventDefault();
+$('loginForm').onsubmit = async e => {
+  e.preventDefault();
+  $('loginError').hidden = true;
+  try {
+    await api('login', { method: 'POST', json: { password: $('password').value } });
+    $('password').value = '';
+    $('loginDialog').close();
+    start();
+  } catch (err) { $('loginError').textContent = err.message; $('loginError').hidden = false; }
+};
+
 function renderSide() {
   document.querySelector('main').classList.toggle('noside', !state.side);
   $('sideBtn').setAttribute('aria-pressed', state.side);
@@ -439,7 +594,7 @@ $('ranges').replaceChildren(...RANGES.map(([name, tf, days]) => {
 }));
 
 document.addEventListener('keydown', e => {
-  if ($('search').open || $('indDialog').open || ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+  if (document.querySelector('dialog[open]') || ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
   if (layer.key(e)) { e.preventDefault(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (/^[a-z0-9]$/i.test(e.key)) { e.preventDefault(); openSearch(e.key.toUpperCase()); }
@@ -450,24 +605,31 @@ document.addEventListener('keydown', e => {
 });
 
 // ---------- startup ----------
+// Loads everything that depends on the server. Runs again after signing in or importing.
+async function start() {
+  try {
+    list = await api('watchlist');
+  } catch (e) { message(e.message); return; }
+  await refreshStatus();
+  try { chart.setIndicators(withDefaults(await api('indicators'))); indicators.build(); } catch { /* use defaults */ }
+  try { Object.assign(groups, await api('groups')); } catch { /* use defaults */ }
+  $('groupBtn').setAttribute('aria-pressed', groups.on);
+  renderList();
+  if (list.length) select((list.find(i => i.id === state.id) ?? list[0]).id);
+  else { message(cloud ? 'Your watchlist is empty. Add a symbol, or import a backup in More.' : 'Building the initial watchlist…'); if (cloud) $('list').replaceChildren(el('p', 'empty', 'Your watchlist is empty. Tap Add, or import a backup in More.')); }
+  refreshQuotes();
+}
+
 async function init() {
   renderTfs(); renderSide();
   $('type').value = state.type; chart.setType(state.type);
   $('log').setAttribute('aria-pressed', state.log); chart.log = state.log;
-  try { chart.setIndicators(withDefaults(await api('indicators'))); indicators.build(); } catch { /* use defaults */ }
   const tick = () => { $('clock').textContent = new Date().toLocaleTimeString('en-GB'); };
   tick(); setInterval(tick, 1000);
-  try { Object.assign(groups, await api('groups')); } catch { /* use defaults */ }
-  $('groupBtn').setAttribute('aria-pressed', groups.on);
-  try {
-    list = await api('watchlist');
-    renderList();
-    if (list.length) select((list.find(i => i.id === state.id) ?? list[0]).id);
-    else message('Building the initial watchlist…');
-  } catch (e) { message(e.message); }
-  refreshQuotes(); refreshStatus();
+  await start();
   setInterval(refreshQuotes, 10_000);
   setInterval(poll, 15_000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshQuotes(); poll(); } });
 }
 init();
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

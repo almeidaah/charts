@@ -22,6 +22,7 @@ Local-first charting for stocks, ETFs, indices, forex, futures and crypto on Win
 - **Indicators:** four configurable moving averages (EMA 8, SMA 20, 50 and 200 by default), RSI 14 with its average, and volume.
 - **Drawings** saved per symbol: trend line, horizontal and vertical lines, horizontal ray, parallel channel, Fibonacci retracement, XABCD, long and short positions with risk/reward, price range, rectangle, brush, text and emoji. Undo and redo included.
 - **Works offline** with everything already downloaded.
+- **On the iPhone and the web**, if you publish your own private site. See the [web guide](docs/web.md).
 
 ## Install
 
@@ -157,6 +158,7 @@ Everything is in the `data` folder next to the program:
 
 - **Back up:** close Charts and copy the `data` folder.
 - **Move to another computer:** copy the `data` folder there while Charts is closed.
+- **Export and import:** **More > Export backup** saves your watchlist, groups, drawings and indicators in one file, without price history.
 - **From portable to installed:** copy `setup.exe` into the portable folder and run it from there. On the first install it brings along the `data` folder next to it.
 
 Charts sends requests only to Yahoo Finance and Binance, to search symbols and fetch prices. There is no telemetry.
@@ -194,6 +196,8 @@ Charts has **no dependencies**. The server uses Node's built-in HTTP and SQLite 
 ```
 server/     HTTP API, SQLite storage, and the Yahoo and Binance providers
 public/     Interface: chart engine, drawings, indicators, watchlist
+api/        Entry point of the web version
+scripts/    Development helpers
 launcher/   Windows launcher and installer (C#) and the build script
 test/       Automated tests
 ```

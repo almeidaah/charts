@@ -18,6 +18,17 @@ export function splitRatio(stored, fresh) {
   return consistent && Math.abs(med - 1) > 0.01 ? med : 1;
 }
 
+// Day and 52-week ranges, from daily bars.
+export function dayStats(rows) {
+  const last = rows.at(-1);
+  if (!last) return {};
+  const year = rows.filter(r => r.t > last.t - 365 * 86400);
+  return {
+    dayLow: last.l, dayHigh: last.h, volume: last.v,
+    yearLow: Math.min(...year.map(r => r.l)), yearHigh: Math.max(...year.map(r => r.h)),
+  };
+}
+
 export function createMarket(db, providers = { yahoo, binance }) {
   const inflight = new Map();
   const quoteCache = new Map(); // source -> { at, key, data (promise) }
@@ -49,7 +60,7 @@ export function createMarket(db, providers = { yahoo, binance }) {
   }
 
   return {
-    sync,
+    sync, providers,
 
     // Returns bars from the database after updating it. Offline, serves what is already saved.
     async candles(inst, tf, { since, offline = false } = {}) {
@@ -94,16 +105,16 @@ export function createMarket(db, providers = { yahoo, binance }) {
     },
 
     async add(id) {
-      let inst = db.instrument(id);
+      let inst = await db.instrument(id);
       if (!inst) {
         const i = id.indexOf(':');
         const source = id.slice(0, i), symbol = id.slice(i + 1);
         if (!Object.hasOwn(providers, source) || !symbol) throw new Error('Invalid symbol');
         inst = await providers[source].describe(symbol);
-        db.saveInstrument(inst);
+        await db.saveInstrument(inst);
       }
-      db.addToWatchlist(inst.id);
-      return db.instrument(inst.id);
+      await db.addToWatchlist(inst.id);
+      return inst;
     },
   };
 }

@@ -124,6 +124,16 @@ export function openDb(file) {
       for (const d of put) q.putDrawing.run(d.uid, id, JSON.stringify(d));
       for (const uid of del) q.delDrawing.run(id, uid);
     }),
+    exportAll: () => ({
+      instruments: db.prepare('SELECT * FROM instruments').all(),
+      watchlist: db.prepare('SELECT id, flag, grp FROM watchlist ORDER BY pos').all(),
+      drawings: db.prepare('SELECT id, data FROM drawings ORDER BY rowid').all().map(r => ({ id: r.id, data: JSON.parse(r.data) })),
+    }),
+    importAll: b => tx(() => {
+      for (const { id, source, symbol, label, name, type, exchange, currency, tz } of b.instruments) q.putInst.run({ id, source, symbol, label, name, type, exchange, currency, tz });
+      for (const w of b.watchlist) { q.addWatch.run(w.id); q.setFlag.run(w.flag, w.id); q.setGrp.run(w.grp, w.id); }
+      for (const d of b.drawings) q.putDrawing.run(d.data.uid, d.id, JSON.stringify(d.data));
+    }),
     meta: key => q.getMeta.get(key)?.value ?? null,
     setMeta: (key, value) => q.putMeta.run(key, value),
   };

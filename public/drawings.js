@@ -186,7 +186,7 @@ export class Layer {
     if (d && !h && !d.locked) h = this.#handleAt(d, p);
     this.select(d);
     if (!d) return false;
-    if (!d.locked) this.drag = { d, h, at: p, before: clone(d), orig: h ? null : this.screen(d) };
+    if (!d.locked) this.drag = { d, h, at: p, off: h ? { x: h.x - p.x, y: h.y - p.y } : null, before: clone(d), orig: h ? null : this.screen(d) };
     return true;
   }
   setToolKeep() { this.tool = null; this.onTool(null); this.chart.draw(); }
@@ -257,8 +257,8 @@ export class Layer {
   setToolAfter() { if (!this.opts.keep) { this.tool = null; this.onTool(null); } }
 
   #dragTo(p, e) {
-    const { d, h, at, orig } = this.drag, c = this.chart;
-    if (h) { h.set(d, this.#pt(p)); return; }
+    const { d, h, at, off, orig } = this.drag, c = this.chart;
+    if (h) { h.set(d, this.#pt({ x: p.x + off.x, y: p.y + off.y })); return; }
     const di = Math.round((p.x - at.x) / c.barW), dy = p.y - at.y;
     const before = this.drag.before;
     d.pts = before.pts.map((q, k) => ({
@@ -306,20 +306,20 @@ export class Layer {
     if (d.tool === 'vline') list[0].y = this.chart.plotH / 2;
     return list;
   }
-  #handleAt(d, p) { return this.#handles(d).find(h => Math.hypot(h.x - p.x, h.y - p.y) <= 9) ?? null; }
+  #handleAt(d, p) { return this.#handles(d).find(h => Math.hypot(h.x - p.x, h.y - p.y) <= (this.chart.touch ? 22 : 9)) ?? null; }
 
   #hit(p) {
     for (let i = this.items.length - 1; i >= 0; i--) if (this.#touches(this.items[i], p)) return this.items[i];
     return null;
   }
   #touches(d, p) {
-    const { plotW: W } = this.chart, s = this.screen(d);
-    const near = segs => segs.some(([a, b]) => segDist(p, a, b) <= HIT + (d.width ?? 1) / 2);
+    const { plotW: W } = this.chart, s = this.screen(d), reach = this.chart.touch ? 16 : HIT;
+    const near = segs => segs.some(([a, b]) => segDist(p, a, b) <= reach + (d.width ?? 1) / 2);
     const path = pts => pts.slice(1).map((q, i) => [pts[i], q]);
     switch (d.tool) {
       case 'trend': return near([s]);
-      case 'hline': return Math.abs(p.y - s[0].y) <= HIT;
-      case 'vline': return Math.abs(p.x - s[0].x) <= HIT;
+      case 'hline': return Math.abs(p.y - s[0].y) <= reach;
+      case 'vline': return Math.abs(p.x - s[0].x) <= reach;
       case 'hray': return near([[s[0], { x: Math.max(W, s[0].x), y: s[0].y }]]);
       case 'channel': return near(this.#channel(s));
       case 'fib': {

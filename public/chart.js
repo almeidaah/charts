@@ -47,7 +47,7 @@ export class Chart {
     this.type = 'candles'; this.log = true; this.auto = true;
     this.barW = 8; this.right = 0; this.y0 = 0; this.y1 = 1;
     this.intraday = false; this.decimals = 2; this.step = 86400;
-    this.mouse = null; this.axisW = 70;
+    this.mouse = null; this.axisW = 70; this.w = 0; this.h = 0;
     this.#bind();
     new ResizeObserver(() => this.#resize()).observe(canvas.parentElement);
     this.#resize();
@@ -87,6 +87,15 @@ export class Chart {
       py = y; pm = m; pd = day; ph = h;
       return w;
     });
+  }
+
+  // Replaces the data without losing the view (used when fresh history replaces cached history).
+  refresh(rows) {
+    if (!this.raw.length || !rows.length) return;
+    const follow = this.right >= this.raw.length - 1, gap = this.right - (this.raw.length - 1), t = this.timeAt(this.right);
+    this.raw = rows; this.#rebuild();
+    this.right = follow ? rows.length - 1 + gap : this.indexOf(t, true);
+    this.#clampRight(); this.draw();
   }
 
   setType(type) { this.type = type; this.#rebuild(); this.draw(); }
@@ -177,7 +186,7 @@ export class Chart {
   #bind() {
     const c = this.canvas;
     const pointers = new Map();
-    let drag = null, pinch = 0;
+    let drag = null, pinch = 0, hold = 0;
     const pos = e => { const r = c.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
     const zone = p => (p.y > this.paneH ? 'time'
       : this.rsiH && Math.abs(p.y - this.plotH) <= 4 ? 'sep'
@@ -187,14 +196,20 @@ export class Chart {
     c.addEventListener('pointerdown', e => {
       if (e.button > 0 || !this.raw.length) return;
       c.setPointerCapture(e.pointerId);
-      const p = pos(e);
-      this.mouse = p;
+      const p = pos(e), touch = e.pointerType === 'touch';
+      this.touch = touch;
+      this.mouse = touch ? null : p;
+      clearTimeout(hold);
       pointers.set(e.pointerId, p);
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
-        pinch = Math.hypot(a.x - b.x, a.y - b.y); drag = null; this.layer?.cancelDrag();
+        pinch = Math.hypot(a.x - b.x, a.y - b.y); drag = null; this.layer?.cancelDrag(); if (this.layer?.draft) this.layer.cancel();
       } else if (zone(p) === 'plot' && this.layer?.down(p, e)) drag = { zone: 'layer' };
-      else drag = { ...p, zone: zone(p), right: this.right, barW: this.barW, y0: this.y0, y1: this.y1 };
+      else {
+        drag = { ...p, zone: zone(p), right: this.right, barW: this.barW, y0: this.y0, y1: this.y1 };
+        // Touch: press and hold shows the crosshair, then dragging moves it.
+        if (touch && (drag.zone === 'plot' || drag.zone === 'rsi')) hold = setTimeout(() => { drag = { zone: 'cross' }; this.mouse = p; this.draw(); }, 350);
+      }
     });
     c.addEventListener('pointermove', e => {
       const p = pos(e);
@@ -205,8 +220,10 @@ export class Chart {
         this.#zoom(d / pinch, (a.x + b.x) / 2); pinch = d;
         return;
       }
+      const touch = e.pointerType === 'touch';
+      if (touch && drag && drag.x != null && Math.hypot(p.x - drag.x, p.y - drag.y) > 8) clearTimeout(hold);
       if (drag?.zone === 'layer' || (!drag && this.layer?.drafting)) this.layer.move(p, e);
-      else if (drag) {
+      else if (drag && drag.zone !== 'cross') {
         const dx = p.x - drag.x, dy = p.y - drag.y;
         if (drag.zone === 'sep') {
           this.cfg.rsi.frac = Math.min(0.6, Math.max(0.08, 1 - p.y / this.paneH));
@@ -224,7 +241,7 @@ export class Chart {
           this.barW = this.#clampBar(drag.barW * Math.exp(-dx / 200)); this.#clampRight();
         }
       }
-      this.mouse = p;
+      if (!touch || drag?.zone === 'cross' || drag?.zone === 'layer') this.mouse = p;
       const z = drag?.zone ?? zone(p);
       c.style.cursor = z === 'price' || z === 'sep' ? 'ns-resize' : z === 'time' ? 'ew-resize'
         : z === 'layer' ? (this.layer.cursor(p) ?? 'crosshair') : drag && z !== 'rsiaxis' ? 'grabbing'
@@ -232,7 +249,9 @@ export class Chart {
       this.draw();
     });
     const up = e => {
+      clearTimeout(hold);
       pointers.delete(e.pointerId);
+      if (e.pointerType === 'touch' && drag?.zone !== 'cross') this.mouse = null;
       if (drag?.zone === 'layer') { if (e.type === 'pointerup') this.layer.up(pos(e), e); else this.layer.cancelDrag(); }
       if (drag?.zone === 'sep') this.onLayout();
       drag = null; pinch = 0;
@@ -240,7 +259,7 @@ export class Chart {
     };
     c.addEventListener('pointerup', up);
     c.addEventListener('pointercancel', up);
-    c.addEventListener('pointerleave', () => { if (!drag) { this.mouse = null; this.draw(); } });
+    c.addEventListener('pointerleave', e => { if (!drag && e.pointerType !== 'touch') { this.mouse = null; this.draw(); } });
     c.addEventListener('dblclick', e => {
       const z = zone(pos(e));
       if (z === 'price') this.setAuto(true);
@@ -261,15 +280,19 @@ export class Chart {
 
   #resize() {
     const { clientWidth: w, clientHeight: h } = this.canvas.parentElement;
+    if (!w || !h) return; // hidden
+    const first = !this.w;
     const dpr = window.devicePixelRatio || 1;
     const bars = this.w ? this.plotW / this.barW : 0;
     this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr);
     this.canvas.style.width = w + 'px'; this.canvas.style.height = h + 'px';
     this.dpr = dpr; this.w = w; this.h = h;
-    if (bars && this.rows.length) this.#clampRight();
+    if (first && this.rows.length) this.resetView();
+    else if (bars && this.rows.length) this.#clampRight();
     this.draw();
   }
   get plotW() { return Math.max(1, this.w - this.axisW); }
+  resize() { this.#resize(); }
   get paneH() { return Math.max(1, this.h - AXIS_H); }
   get rsiH() { return this.cfg.rsi.on ? Math.round(this.paneH * this.cfg.rsi.frac) : 0; }
   get plotH() { return Math.max(1, this.paneH - this.rsiH); }

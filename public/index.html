@@ -3,7 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="google" content="notranslate">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c0e13">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Charts">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
   <title>Charts</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%2312151c'/><path d='M4.5 3v10M11.5 2v9' stroke='%23e0a83a' stroke-width='1.2'/><rect x='3' y='6' width='3' height='5' fill='%23e0a83a'/><rect x='10' y='4' width='3' height='5' fill='%23e0a83a'/></svg>">
   <link rel="stylesheet" href="style.css">
@@ -11,6 +18,7 @@
 <body>
   <header>
     <button id="symbolBtn" class="symbol" title="Search symbol (or just start typing)"><b id="symbolLabel">—</b></button>
+    <select id="tfSel" class="phone" aria-label="Timeframe"></select>
     <div id="tfs" class="group" role="group" aria-label="Timeframe"></div>
     <select id="type" aria-label="Chart type">
       <option value="candles">Candles</option>
@@ -25,6 +33,7 @@
       <button id="auto" aria-pressed="true" title="Auto-fit price scale">Auto</button>
     </div>
     <button id="indBtn">Indicators</button>
+    <button id="drawBtn" class="phone" aria-pressed="false">Draw</button>
     <span class="spacer"></span>
     <button id="sideBtn" aria-pressed="true">Watchlist</button>
   </header>
@@ -58,6 +67,8 @@
       <div class="sidehead"><h2>Watchlist</h2><span id="syncInfo"></span>
         <button id="groupBtn" aria-pressed="true" title="Group the watchlist by asset type">Groups</button>
         <button id="syncBtn" title="Update daily history for all symbols">Update</button>
+        <button id="editBtn" aria-pressed="false">Edit</button>
+        <button id="moreBtn" title="Backup and session">More</button>
         <button id="addBtn">Add</button>
       </div>
       <div class="rows head"><span></span><span>Symbol</span><span>Last</span><span>Chg</span><span>Chg%</span><span title="Pre-market and after hours">Ext</span></div>
@@ -67,12 +78,29 @@
     </aside>
   </main>
 
+  <nav id="tabs" aria-label="Views">
+    <button data-tab="list">Watchlist</button>
+    <button data-tab="chart">Chart</button>
+  </nav>
+
   <dialog id="search">
+    <button id="searchClose" class="phone">Cancel</button>
     <input id="q" placeholder="Symbol or name: PETR4, NVDA, BTCUSDT, gold…" autocomplete="off" spellcheck="false">
     <div id="filters" class="group"></div>
     <div id="results"></div>
   </dialog>
   <dialog id="indDialog" aria-label="Indicators"></dialog>
+  <dialog id="moreDialog" class="box" aria-label="Backup and session"></dialog>
+  <dialog id="loginDialog" class="box" aria-label="Sign in">
+    <form id="loginForm">
+      <h2>Charts</h2>
+      <input type="text" name="username" value="charts" autocomplete="username" hidden>
+      <label class="stack">Password <input id="password" type="password" autocomplete="current-password" required></label>
+      <p id="loginError" role="alert" hidden></p>
+      <button class="primary">Sign in</button>
+    </form>
+  </dialog>
+  <input id="backupFile" type="file" accept="application/json,.json" hidden>
   <div id="toast" role="status"></div>
   <script type="module" src="app.js"></script>
 </body>

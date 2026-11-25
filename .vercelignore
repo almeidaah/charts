@@ -1,0 +1,9 @@
+# Only the app is uploaded. User data never leaves this computer.
+/*
+!/api
+!/server
+!/public
+!/scripts
+!/test
+!/package.json
+!/vercel.json

@@ -3,7 +3,8 @@ import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join, extname, normalize, sep } from 'node:path';
 import { openDb } from './db.js';
-import { createMarket } from './market.js';
+import { createMarket, dayStats } from './market.js';
+import { createRoutes, HttpError, readJson } from './routes.js';
 import { TIMEFRAMES } from './timeframes.js';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -41,117 +42,27 @@ async function syncAll() {
   syncJob.running = false;
 }
 
-// Day and 52-week ranges, from the local daily history.
-function dayStats(id) {
-  const rows = db.lastCandles(id, '1d', 366);
-  const last = rows.at(-1);
-  if (!last) return {};
-  const year = rows.filter(r => r.t > last.t - 365 * 86400);
-  return {
-    dayLow: last.l, dayHigh: last.h, volume: last.v,
-    yearLow: Math.min(...year.map(r => r.l)), yearHigh: Math.max(...year.map(r => r.h)),
-  };
-}
+const routes = createRoutes({
+  store: db,
+  market: {
+    ...market,
+    candles(inst, tf, opts) {
+      if (TIMEFRAMES[tf].base !== '1d') market.sync(inst, '1d', 60).catch(() => {}); // keeps the day details fresh
+      return market.candles(inst, tf, opts);
+    },
+  },
+  extra: {
+    'GET /api/ping': () => ({ app: 'charts-app' }),
+    'GET /api/quotes': async () => {
+      const list = db.watchlist(), data = await market.quotes(list);
+      return Object.fromEntries(list.map(i => [i.id, { ...data[i.id], ...dayStats(db.lastCandles(i.id, '1d', 366)) }]));
+    },
+    'GET /api/status': () => ({ sync: syncJob, coverage: db.coverage() }),
+    'POST /api/sync': async ({ body }) => { await body(); syncAll(); return { ok: true }; },
+  },
+});
 
-class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
-
-function known(id) {
-  const inst = id && db.instrument(id);
-  if (!inst) throw new HttpError(404, 'Unknown symbol');
-  return inst;
-}
-
-async function body(req) {
-  if (!(req.headers['content-type'] ?? '').startsWith('application/json')) throw new HttpError(415, 'Expected JSON');
-  let s = '';
-  for await (const chunk of req) { s += chunk; if (s.length > 1e6) throw new HttpError(413, 'Too large'); }
-  try { return JSON.parse(s); } catch { throw new HttpError(400, 'Invalid JSON'); }
-}
-
-const validDrawing = d => d && typeof d === 'object' && /^[\w-]{6,40}$/.test(d.uid) && typeof d.tool === 'string'
-  && Array.isArray(d.pts) && d.pts.length > 0 && d.pts.length <= 5000
-  && d.pts.every(p => Number.isFinite(p?.t) && Number.isFinite(p?.p));
-
-const routes = {
-  'GET /api/watchlist': () => db.watchlist(),
-  'POST /api/watchlist': async (req) => {
-    const { id } = await body(req);
-    if (typeof id !== 'string') throw new HttpError(400, 'Missing id');
-    const inst = await market.add(id);
-    market.sync(inst, '1d').catch(() => {});
-    return inst;
-  },
-  'DELETE /api/watchlist': (req, url) => { db.removeFromWatchlist(url.searchParams.get('id') ?? ''); return { ok: true }; },
-  'PUT /api/watchlist/flag': async (req) => {
-    const { id, flag } = await body(req);
-    if (!['', 'red', 'blue', 'green', 'amber', 'violet'].includes(flag)) throw new HttpError(400, 'Invalid color');
-    db.flagWatchlist(known(id).id, flag);
-    return { ok: true };
-  },
-  'PUT /api/watchlist/group': async (req) => {
-    const { id, grp } = await body(req);
-    if (typeof grp !== 'string' || grp.length > 30) throw new HttpError(400, 'Invalid group');
-    db.groupWatchlist(known(id).id, grp);
-    return { ok: true };
-  },
-  'GET /api/groups': () => JSON.parse(db.meta('groups') ?? '{}'),
-  'PUT /api/groups': async (req) => {
-    const g = await body(req);
-    const names = x => Array.isArray(x) && x.length <= 100 && x.every(n => typeof n === 'string' && n.length <= 30);
-    if (typeof g?.on !== 'boolean' || !names(g.order) || !names(g.closed)) throw new HttpError(400, 'Invalid groups');
-    db.setMeta('groups', JSON.stringify({ on: g.on, order: g.order, closed: g.closed }));
-    return { ok: true };
-  },
-  'GET /api/ping': () => ({ app: 'charts-app' }),
-  'PUT /api/watchlist/order': async (req) => {
-    const { ids } = await body(req);
-    if (!Array.isArray(ids) || !ids.every(x => typeof x === 'string')) throw new HttpError(400, 'Invalid list');
-    db.reorderWatchlist(ids);
-    return { ok: true };
-  },
-  'GET /api/quotes': async () => {
-    const list = db.watchlist();
-    const data = await market.quotes(list);
-    return Object.fromEntries(list.map(i => [i.id, { ...data[i.id], ...dayStats(i.id) }]));
-  },
-  'GET /api/search': (req, url) => {
-    const q = (url.searchParams.get('q') ?? '').trim();
-    return q ? market.search(q.slice(0, 60)) : [];
-  },
-  'GET /api/candles': async (req, url) => {
-    const inst = known(url.searchParams.get('id'));
-    const tf = url.searchParams.get('tf') ?? '1d';
-    if (!Object.hasOwn(TIMEFRAMES, tf)) throw new HttpError(400, 'Invalid timeframe');
-    const since = url.searchParams.has('since') ? Number(url.searchParams.get('since')) : undefined;
-    if (since !== undefined && !Number.isFinite(since)) throw new HttpError(400, 'Invalid since');
-    if (TIMEFRAMES[tf].base !== '1d') market.sync(inst, '1d', 60).catch(() => {}); // keeps the day details fresh
-    const { candles, warning } = await market.candles(inst, tf, { since });
-    // Compact format: [t,o,h,l,c,v]
-    return { warning, candles: candles.map(r => [r.t, r.o, r.h, r.l, r.c, r.v]) };
-  },
-  'GET /api/drawings': (req, url) => db.drawings(known(url.searchParams.get('id')).id),
-  'POST /api/drawings': async (req) => {
-    const { id, put = [], del = [] } = await body(req);
-    const inst = known(id);
-    const uid = /^[\w-]{6,40}$/;
-    if (!Array.isArray(put) || !Array.isArray(del) || !del.every(u => uid.test(u)) || !put.every(validDrawing)) {
-      throw new HttpError(400, 'Invalid drawing');
-    }
-    db.changeDrawings(inst.id, put, del);
-    return { ok: true };
-  },
-  'GET /api/indicators': () => JSON.parse(db.meta('indicators') ?? 'null'),
-  'PUT /api/indicators': async (req) => {
-    const cfg = await body(req);
-    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw new HttpError(400, 'Invalid settings');
-    db.setMeta('indicators', JSON.stringify(cfg));
-    return { ok: true };
-  },
-  'GET /api/status': () => ({ sync: syncJob, coverage: db.coverage() }),
-  'POST /api/sync': async (req) => { await body(req); syncAll(); return { ok: true }; },
-};
-
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 async function serveStatic(url, res) {
   const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname);
@@ -172,9 +83,8 @@ const server = http.createServer(async (req, res) => {
     const origin = req.headers.origin;
     if (origin && !ALLOWED_HOSTS.has(origin.replace('http://', ''))) throw new HttpError(403, 'Origin not allowed');
     const url = new URL(req.url, `http://${req.headers.host}`);
-    const route = routes[`${req.method} ${url.pathname}`];
-    if (route) {
-      const data = await route(req, url);
+    if (routes.has(req.method, url.pathname)) {
+      const data = await routes.run(req.method, url.pathname, { query: url.searchParams, body: () => readJson(req) });
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify(data));
     } else if (req.method === 'GET') await serveStatic(url, res);

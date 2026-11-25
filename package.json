@@ -9,7 +9,7 @@
     "url": "https://github.com/almeidaah/charts.git"
   },
   "engines": {
-    "node": ">=24"
+    "node": "24.x"
   },
   "scripts": {
     "start": "node server/index.js --open",
