@@ -11,7 +11,7 @@ if (-not $Output) { $Output = "$root\dist\Charts" }
 $utf8 = New-Object Text.UTF8Encoding($false)
 $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 $node = (Get-Command node).Source
-$files = 'server', 'public', 'runtime', 'package.json', 'README.txt', 'charts.exe'
+$files = 'server', 'public', 'runtime', 'package.json', 'README.txt', 'LICENSE.txt', 'charts.exe'
 
 New-Item -ItemType Directory -Force $Output, "$Output\runtime" | Out-Null
 $Output = (Resolve-Path $Output).Path
@@ -21,6 +21,7 @@ foreach ($d in 'server', 'public') {
 }
 Copy-Item "$root\package.json" $Output -Force
 Copy-Item "$root\launcher\README.txt" $Output -Force
+Copy-Item "$root\LICENSE" "$Output\LICENSE.txt" -Force
 Copy-Item $node "$Output\runtime\node.exe" -Force
 
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('charts-' + [guid]::NewGuid().ToString('N'))

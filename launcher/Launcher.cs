@@ -90,7 +90,7 @@ static class Launcher
         File.Delete(info);
         foreach (string d in new[] { "server", "public", "runtime" })
             if (Directory.Exists(Path.Combine(Root, d))) Directory.Delete(Path.Combine(Root, d), true);
-        foreach (string n in new[] { "package.json", "README.txt" }) File.Delete(Path.Combine(Root, n));
+        foreach (string n in new[] { "package.json", "README.txt", "LICENSE.txt" }) File.Delete(Path.Combine(Root, n));
         // The exe can only be deleted after it closes; the folder is removed only if empty.
         ProcessStartInfo cmd = new ProcessStartInfo("cmd.exe", "/c ping -n 3 127.0.0.1 >nul & del \"" + Application.ExecutablePath + "\" & rmdir \"" + Root.TrimEnd('\\') + "\"");
         cmd.WorkingDirectory = Path.GetTempPath();

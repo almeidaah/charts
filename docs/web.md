@@ -33,6 +33,14 @@ Keep both private. Never commit them.
 
 Each push to `main` publishes a new version the same way. To change the password, edit `APP_PASSWORD` and redeploy; every device has to sign in again.
 
+### About the password
+
+- You make it up and type it in `APP_PASSWORD`. It exists only in your Vercel project: not in the code, not in the database, and not in anyone else's site.
+- Every copy of Charts is separate. Whoever publishes their own site has their own password and their own database.
+- There are no user accounts. Everyone who has the password sees and edits the same watchlist and drawings, so do not share it.
+- Each device stays signed in for 180 days. Eight wrong attempts lock that address for 15 minutes.
+- Forgot it? Set a new `APP_PASSWORD` in Vercel and redeploy. Your data is kept.
+
 ## 3. Check it
 
 Open the site, sign in, and go to **More > Connection test**. The database, Yahoo and Binance should all say **ok**. If Yahoo fails, it is refusing the host; change `regions` in `vercel.json` and redeploy.

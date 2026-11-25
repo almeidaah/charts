@@ -219,6 +219,10 @@ Environment variables: `PORT` (default `5180`) and `CHARTS_DB` (database path).
 
 See the [roadmap](ROADMAP.md) for what is planned.
 
+## License
+
+[MIT](LICENSE). You can use, change and share it, as long as the copyright notice is kept. The license covers this code only, not the market data.
+
 ## Disclaimer
 
 Charts is for information only and is not investment advice. Prices may be delayed, incomplete or wrong. This project is independent and is not affiliated with Yahoo, Binance or any exchange or charting platform. Bundled software is listed in [third-party notices](THIRD_PARTY_NOTICES.md).
