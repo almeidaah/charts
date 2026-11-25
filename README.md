@@ -15,7 +15,7 @@ Local-first charting for stocks, ETFs, indices, forex, futures and crypto on Win
 
 ## Features
 
-- **Watchlist** with last price, change, change % and extended hours. Automatic groups (Crypto, USA, Brazil, Forex, Indices, Commodities), your own groups, color flags, and drag to reorder.
+- **Watchlist** with the asset name under each ticker, last price, change, change % and extended hours. Automatic groups (Crypto, USA, Brazil, Forex, Indices, Commodities), your own groups, color flags, and drag to reorder.
 - **Search** across US stocks, B3 and other exchanges, ETFs, indices, forex, futures and crypto.
 - **13 timeframes**, from 1 minute to 1 month, plus one-click ranges from 1 day to all history.
 - **6 chart types:** candles, hollow candles, bars, line, area and Heikin Ashi. Log or linear scale.

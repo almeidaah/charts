@@ -14,11 +14,11 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Charts Setup")]
 [assembly: AssemblyProduct("Charts")]
-[assembly: AssemblyVersion("1.5.1.0")]
+[assembly: AssemblyVersion("1.6.0.0")]
 
 static class Setup
 {
-    const string Version = "1.5.1";
+    const string Version = "1.6.0";
     const string PingUrl = "http://127.0.0.1:5180/api/ping";
     static bool quiet, noDesktop;
     static string dir, shortcutsDir, regKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Charts";

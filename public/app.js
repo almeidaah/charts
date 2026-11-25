@@ -5,6 +5,7 @@ import { mountIndicators } from './legend.js';
 import { withDefaults } from './indicators.js';
 import { createTicks, firstChange } from './ticks.js';
 import { logo } from './logos.js';
+import { assetName } from './names.js';
 import { createGuestLocal } from './guest.js';
 import { createLive, applyTick } from './live.js';
 import { AUTO_GROUPS, arrange, autoGroup, groupOf, cleanName } from './groups.js';
@@ -343,7 +344,7 @@ function listRow(inst) {
     row.append(flag, logo(inst), el('span', 'sym', inst.label),
       priceCell(inst, q, d),
       el('span', tone(q.chg), q.chg == null ? '' : num(q.chg, d)),
-      el('span', tone(q.pct), pct(q.pct)), el('span', tone(q.ext), pct(q.ext)), del);
+      el('span', tone(q.pct), pct(q.pct)), el('span', tone(q.ext), pct(q.ext)), el('span', 'name', assetName(inst)), del);
     row.onclick = () => { if (!editing) open(inst.id); };
     if (editing) editRow(row, inst, del);
     row.ondragstart = e => { e.dataTransfer.setData('text/plain', inst.id); e.dataTransfer.effectAllowed = 'move'; };
