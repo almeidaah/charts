@@ -6,7 +6,7 @@ import { BASE_SECONDS } from '../timeframes.js';
 const HOSTS = ['https://api.binance.com', 'https://data-api.binance.vision'];
 let hostIndex = 0;
 const PAGE = 1000;
-export const QUOTE_TTL = 8_000;
+export const QUOTE_TTL = 4_000;
 const MAX_CANDLES = 100_000; // cap per timeframe on the first download
 const client = createClient({ name: 'Binance', concurrency: 6 });
 async function getJson(path) {

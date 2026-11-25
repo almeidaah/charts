@@ -3,12 +3,20 @@ import { Layer } from './drawings.js';
 import { mountTools } from './tools.js';
 import { mountIndicators } from './legend.js';
 import { withDefaults } from './indicators.js';
+import { createTicks, firstChange } from './ticks.js';
 import { AUTO_GROUPS, arrange, autoGroup, groupOf, cleanName } from './groups.js';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
-async function api(path, { method = 'GET', json } = {}) {
+// Writes in flight, so a refresh never overwrites a change that is still being saved.
+let pending = 0, writes = 0;
+async function api(path, opts = {}) {
+  if ((opts.method ?? 'GET') === 'GET') return request(path, opts);
+  pending++; writes++;
+  try { return await request(path, opts); } finally { pending--; }
+}
+async function request(path, { method = 'GET', json } = {}) {
   let res;
   try {
     res = await fetch('/api/' + path, {
@@ -44,7 +52,7 @@ try { Object.assign(state, JSON.parse(localStorage.getItem('view') ?? '{}')); } 
 if (!TFS.includes(state.tf)) state.tf = '1d';
 const save = () => { try { localStorage.setItem('view', JSON.stringify(state)); } catch { /* no storage */ } };
 
-let list = [], quotes = {}, coverage = [], current = null, loadSeq = 0, cloud = false, editing = false;
+let list = [], quotes = {}, coverage = [], current = null, loadSeq = 0, cloud = false, editing = false, link = null, rev = null;
 
 // ---------- phone ----------
 const phone = matchMedia('(max-width: 860px)');
@@ -79,6 +87,22 @@ const pct = v => (v == null ? '' : num(v, 2) + '%');
 const compact = v => v.toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 2 });
 const tone = v => (v == null || v === 0 ? '' : v > 0 ? 'up' : 'down');
 
+// Price with the digits that just changed in green or red.
+const ticks = createTicks();
+function priceCell(inst, q, d, tag = 'span') {
+  const cell = el(tag, '', '');
+  if (q.last == null) { cell.textContent = q.error ? 'error' : '…'; return cell; }
+  const text = num(q.last, d), m = ticks.get(inst.id);
+  const i = m ? firstChange(num(m.from, d), text) : text.length;
+  cell.append(text.slice(0, i));
+  if (i < text.length) {
+    const s = el('span', 'tick ' + (m.up ? 'up' : 'down'), text.slice(i));
+    s.style.setProperty('--left', `${m.until - Date.now()}ms`);
+    cell.append(s);
+  }
+  return cell;
+}
+
 // ---------- chart ----------
 const chart = new Chart($('chart'), {
   onHover: renderOhlc,
@@ -98,10 +122,10 @@ mountTools({
   persist: () => { state.draw = { ...layer.opts }; state.styles = layer.styles; save(); },
 });
 
-let indTimer;
+let indTimer = 0;
 function saveIndicators(cfg) {
   clearTimeout(indTimer);
-  indTimer = setTimeout(() => api('indicators', { method: 'PUT', json: cfg }).catch(e => toast(e.message)), 300);
+  indTimer = setTimeout(() => { indTimer = 0; api('indicators', { method: 'PUT', json: cfg }).catch(e => toast(e.message)); }, 300);
 }
 const indicators = mountIndicators({ chart, top: $('lgInd'), rsiBox: $('lgRsi'), dialog: $('indDialog'), onChange: saveIndicators });
 
@@ -309,7 +333,7 @@ function listRow(inst) {
     del.title = 'Remove from watchlist (history is kept)'; del.setAttribute('aria-label', `Remove ${inst.label} from watchlist`);
     del.onclick = e => { e.stopPropagation(); remove(inst); };
     row.append(flag, el('span', 'sym', inst.label),
-      el('span', '', q.last == null ? (q.error ? 'error' : '…') : num(q.last, d)),
+      priceCell(inst, q, d),
       el('span', tone(q.chg), q.chg == null ? '' : num(q.chg, d)),
       el('span', tone(q.pct), pct(q.pct)), el('span', tone(q.ext), pct(q.ext)), del);
     row.onclick = () => { if (!editing) open(inst.id); };
@@ -389,7 +413,8 @@ function renderDetails() {
   const parts = [el('h3', '', current.name || current.label),
     el('div', 'sub', [TYPE_NAME[current.type] ?? current.type, current.exchange, `Data: ${current.source === 'yahoo' ? 'Yahoo' : 'Binance'}`].filter(Boolean).join(' · '))];
   if (q?.last != null) {
-    const p = el('div', 'price', num(q.last, d) + ' ');
+    const p = el('div', 'price');
+    p.append(priceCell(current, q, d), ' ');
     p.append(el('small', '', current.currency + ' '), el('small', tone(q.pct), pct(q.pct)));
     parts.push(p);
     const range = (name, lo, hi) => {
@@ -407,7 +432,7 @@ function renderDetails() {
 
 async function refreshQuotes() {
   if (document.hidden || !list.length) return;
-  try { quotes = await api(`quotes?${new URLSearchParams({ focus: current?.id ?? '' })}`); if (!editing) renderList(); renderDetails(); renderHeader(); } catch { /* next cycle */ }
+  try { quotes = await api(`quotes?${new URLSearchParams({ focus: current?.id ?? '' })}`); ticks.update(quotes); if (!editing) renderList(); renderDetails(); renderHeader(); } catch { /* next cycle */ }
 }
 
 async function refreshStatus() {
@@ -416,12 +441,12 @@ async function refreshStatus() {
     cloud = !!s.cloud;
     document.body.classList.toggle('cloud', cloud);
     if (cloud) { $('syncInfo').textContent = list.length === 1 ? '1 symbol' : `${list.length} symbols`; return; }
-    coverage = s.coverage;
+    coverage = s.coverage; link = s.link;
     const daily = new Set(coverage.filter(c => c.tf === '1d').map(c => c.id));
     const ready = list.filter(i => daily.has(i.id)).length;
     const busy = s.sync.running || s.sync.seeding;
-    $('syncInfo').textContent = busy ? `Downloading ${s.sync.done}/${s.sync.total || '…'}` : `${ready}/${list.length} with history`;
-    $('syncInfo').title = s.sync.errors.join('\n');
+    $('syncInfo').textContent = busy ? `Downloading ${s.sync.done}/${s.sync.total || '…'}` : link ? (link.error ? 'web sync: offline' : 'synced with web') : `${ready}/${list.length} with history`;
+    $('syncInfo').title = [link?.error, `${ready}/${list.length} with history`, ...s.sync.errors].filter(Boolean).join('\n');
     $('syncBtn').disabled = busy;
     if (busy) {
       const fresh = await api('watchlist');
@@ -432,6 +457,46 @@ async function refreshStatus() {
       setTimeout(refreshStatus, 1200);
     }
   } catch (e) { $('syncInfo').textContent = 'offline'; }
+}
+
+// ---------- live updates ----------
+// Every few seconds checks whether something changed on another device and shows it here.
+const interacting = () => pending || indTimer || editing || layer.draft || layer.drag || layer.closeText
+  || document.querySelector('dialog[open], #groupBox input, .row.drop');
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+async function checkChanges() {
+  if (document.hidden || interacting()) return;
+  try {
+    const now = (await api('rev')).rev;
+    if (now == null || now === rev) return;
+    const mark = writes, id = current?.id;
+    const [newList, newGroups, newInd, newDrawings] = await Promise.all([
+      api('watchlist'), api('groups'), api('indicators'), id ? api(`drawings?${new URLSearchParams({ id })}`).catch(() => null) : null,
+    ]);
+    if (writes !== mark || interacting() || current?.id !== id) return; // try again on the next cycle
+    rev = now;
+    const g = { on: true, order: [], closed: [], ...newGroups };
+    if (!same(g, { on: groups.on, order: groups.order, closed: groups.closed }) || !same(newList, list)) {
+      Object.assign(groups, g);
+      list = newList;
+      $('groupBtn').setAttribute('aria-pressed', groups.on);
+      current = list.find(i => i.id === id) ?? null;
+      renderList();
+      if (!list.length) showEmpty();
+      else if (!current) select(list[0].id);
+      else { renderGroupBox(); refreshQuotes(); }
+    }
+    const cfg = withDefaults(newInd);
+    if (!same(cfg, chart.cfg)) { chart.setIndicators(cfg); indicators.build(); }
+    if (newDrawings && current?.id === id) layer.replace(newDrawings);
+  } catch { /* retries on the next cycle */ }
+}
+
+function showEmpty() {
+  chart.setData([], { intraday: false, decimals: 2 });
+  message(cloud ? 'Your watchlist is empty. Add a symbol, or import a backup in More.' : 'Your watchlist is empty. Click Add.');
+  $('list').replaceChildren(el('p', 'empty', cloud ? 'Your watchlist is empty. Tap Add, or import a backup in More.' : 'Your watchlist is empty.'));
 }
 
 // ---------- search ----------
@@ -560,11 +625,43 @@ $('moreBtn').onclick = () => {
       location.reload();
     }));
   }
+  if (!cloud) parts.push(webSync(d));
   const close = el('button', 'primary', 'Close'); close.onclick = () => d.close();
   d.replaceChildren(...parts, close);
   d.showModal();
 };
 $('moreDialog').onclick = e => { if (e.target === $('moreDialog')) $('moreDialog').close(); };
+
+// Desktop only: use the same watchlist, groups, drawings and indicators as the web version.
+function webSync(dialog) {
+  const box = el('form', 'websync');
+  box.append(el('h3', '', 'Web sync'));
+  if (link) {
+    box.append(el('p', 'sub', link.error ? `${link.url}\n${link.error}` : `Sharing everything with ${link.url}`));
+    const off = el('button', '', 'Disconnect'); off.type = 'button';
+    off.onclick = async () => { try { await api('link', { method: 'DELETE' }); link = null; dialog.close(); toast('Disconnected. This computer keeps its copy.'); start(); } catch (e) { toast(e.message); } };
+    box.append(off);
+    if (!link.error) return box;
+  } else box.append(el('p', 'sub', 'Share your watchlist, groups, drawings and indicators with your web version. Changes show up on every device in a few seconds.'));
+  const url = el('input'), pass = el('input'), err = el('p', 'err'), go = el('button', 'primary', link ? 'Sign in again' : 'Connect');
+  url.placeholder = 'your-site.vercel.app'; url.value = link?.url ?? ''; url.autocomplete = 'off'; url.spellcheck = false; url.required = true;
+  url.setAttribute('aria-label', 'Site address'); pass.setAttribute('aria-label', 'Password of your site');
+  pass.type = 'password'; pass.placeholder = 'Password of your site'; pass.autocomplete = 'off'; pass.required = true;
+  err.setAttribute('role', 'alert');
+  box.append(url, pass, err, go);
+  box.onsubmit = async e => {
+    e.preventDefault();
+    err.textContent = ''; go.disabled = true; go.textContent = 'Connecting…';
+    try {
+      const r = await api('link', { method: 'POST', json: { url: url.value, password: pass.value } });
+      pass.value = '';
+      dialog.close();
+      toast(`Connected: ${r.total.watchlist} symbols and ${r.total.drawings} drawings are now shared.`);
+      await start();
+    } catch (x) { err.textContent = x.message; go.disabled = false; go.textContent = link ? 'Sign in again' : 'Connect'; }
+  };
+  return box;
+}
 
 function showLogin() {
   if ($('loginDialog').open) return;
@@ -608,6 +705,7 @@ document.addEventListener('keydown', e => {
 // Loads everything that depends on the server. Runs again after signing in or importing.
 async function start() {
   try {
+    rev = (await api('rev')).rev;
     list = await api('watchlist');
   } catch (e) { message(e.message); return; }
   await refreshStatus();
@@ -616,7 +714,8 @@ async function start() {
   $('groupBtn').setAttribute('aria-pressed', groups.on);
   renderList();
   if (list.length) select((list.find(i => i.id === state.id) ?? list[0]).id);
-  else { message(cloud ? 'Your watchlist is empty. Add a symbol, or import a backup in More.' : 'Building the initial watchlist…'); if (cloud) $('list').replaceChildren(el('p', 'empty', 'Your watchlist is empty. Tap Add, or import a backup in More.')); }
+  else if (cloud || link) showEmpty();
+  else message('Building the initial watchlist…');
   refreshQuotes();
 }
 
@@ -627,9 +726,10 @@ async function init() {
   const tick = () => { $('clock').textContent = new Date().toLocaleTimeString('en-GB'); };
   tick(); setInterval(tick, 1000);
   await start();
-  setInterval(refreshQuotes, 10_000);
+  setInterval(refreshQuotes, 5_000);
+  setInterval(checkChanges, 4_000);
   setInterval(poll, 15_000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshQuotes(); poll(); } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkChanges(); refreshQuotes(); poll(); } });
 }
 init();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

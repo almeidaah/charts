@@ -10,6 +10,8 @@
 - Local storage of history, drawings and settings
 - Windows launcher, installer and portable version
 - Web version with password, phone layout and Home Screen icon
+- Live sync between the desktop and the web version
+- Price changes highlighted digit by digit
 
 ## Planned
 
@@ -18,4 +20,3 @@
 - **Chart:** symbol comparison, Baseline, Renko, Kagi, Line Break, Point and Figure, extended hours
 - **Watchlist:** multiple lists, filter by flag, import and export
 - **Workspace:** several charts on screen, price and indicator alerts, bar replay
-- **Sync** between the desktop and the web version

@@ -79,6 +79,14 @@ export class Layer {
       if (this.inst === inst) { this.items = items; this.chart.draw(); }
     } catch (e) { if (this.inst === inst) this.toast(`Could not load drawings: ${e.message}`); }
   }
+  // Drawings changed on another device.
+  replace(items) {
+    if (JSON.stringify(items) === JSON.stringify(this.items)) return;
+    const uid = this.sel?.uid;
+    this.items = items;
+    this.select(uid ? items.find(d => d.uid === uid) ?? null : null);
+    this.chart.draw();
+  }
   get stack() {
     if (!this.stacks.has(this.inst)) this.stacks.set(this.inst, { undo: [], redo: [] });
     return this.stacks.get(this.inst);

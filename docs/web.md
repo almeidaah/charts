@@ -50,9 +50,18 @@ On the phone:
 - Drag to scroll and pinch to zoom. Press and hold to show the crosshair.
 - **Draw** shows the drawing tools. Drag to draw, then drag the handles to adjust.
 
-## Move your data
+## Use the same data everywhere
 
-On the computer, open **More > Export backup**. On the site, open **More > Import backup** and pick the file. Importing adds to what is there and can be repeated. The two copies are independent after that.
+On the computer, open **More > Web sync**, enter the address and password of your site, and click **Connect**. What the site does not have yet is sent to it, and nothing is deleted. If both have the same symbol or drawing, the site's version is kept.
+
+From then on the computer and the site share the watchlist, groups, drawings and indicators. A change on one shows up on the others in a few seconds, while they are open.
+
+- Price history stays on the computer.
+- Without a connection, the computer shows the last copy and refuses changes, so the two never drift apart.
+- The password is not stored on the computer, only the session. **Disconnect** ends it and keeps the local copy.
+- If you change the site password, connect again.
+
+To copy the data just once instead, use **More > Export backup** and **More > Import backup**.
 
 ## Try it on your computer
 

@@ -14,6 +14,7 @@ const PUT_INST = `INSERT INTO instruments (id, source, symbol, label, name, type
     exchange=excluded.exchange, currency=excluded.currency, tz=excluded.tz`;
 const ADD_WATCH = `INSERT OR IGNORE INTO watchlist (id, pos) VALUES (?, (SELECT COALESCE(MAX(pos), -1) + 1 FROM watchlist))`;
 const PUT_DRAW = `INSERT INTO drawings (uid, id, data) VALUES (?, ?, ?) ON CONFLICT(uid) DO UPDATE SET data = excluded.data WHERE id = excluded.id`;
+const BUMP = [`INSERT INTO meta (key, value) VALUES ('rev', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)`];
 const PUT_META = 'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)';
 const instArgs = i => [i.id, i.source, i.symbol, i.label, i.name ?? '', i.type ?? '', i.exchange ?? '', i.currency ?? '', i.tz ?? 'UTC'];
 
@@ -70,31 +71,33 @@ export function openTurso(url, token, fetchFn = fetch) {
   }
   async function all(sql, ...args) { await init(); return rowsOf(await pipeline({ type: 'execute', stmt: toStmt([sql, ...args]) })); }
   async function tx(list) { await init(); return batch(list); }
+  const change = list => tx([...list, BUMP]); // user data: also moves the revision
   const one = async (...a) => (await all(...a))[0];
 
   return {
     instrument: id => one('SELECT * FROM instruments WHERE id = ?', id),
-    saveInstrument: i => tx([[PUT_INST, ...instArgs(i)]]),
+    saveInstrument: i => change([[PUT_INST, ...instArgs(i)]]),
     watchlist: () => all('SELECT i.*, w.flag, w.grp FROM watchlist w JOIN instruments i USING (id) ORDER BY w.pos'),
-    addToWatchlist: id => tx([[ADD_WATCH, id]]),
-    removeFromWatchlist: id => tx([['DELETE FROM watchlist WHERE id = ?', id]]),
-    flagWatchlist: (id, flag) => tx([['UPDATE watchlist SET flag = ? WHERE id = ?', flag, id]]),
-    groupWatchlist: (id, grp) => tx([['UPDATE watchlist SET grp = ? WHERE id = ?', grp, id]]),
-    reorderWatchlist: ids => tx(ids.map((id, i) => ['UPDATE watchlist SET pos = ? WHERE id = ?', i, id])),
+    addToWatchlist: id => change([[ADD_WATCH, id]]),
+    removeFromWatchlist: id => change([['DELETE FROM watchlist WHERE id = ?', id]]),
+    flagWatchlist: (id, flag) => change([['UPDATE watchlist SET flag = ? WHERE id = ?', flag, id]]),
+    groupWatchlist: (id, grp) => change([['UPDATE watchlist SET grp = ? WHERE id = ?', grp, id]]),
+    reorderWatchlist: ids => change(ids.map((id, i) => ['UPDATE watchlist SET pos = ? WHERE id = ?', i, id])),
     drawings: async id => (await all('SELECT data FROM drawings WHERE id = ? ORDER BY rowid', id)).map(r => JSON.parse(r.data)),
-    changeDrawings: (id, put, del) => tx([
+    changeDrawings: (id, put, del) => change([
       ...put.map(d => [PUT_DRAW, d.uid, id, JSON.stringify(d)]),
       ...del.map(uid => ['DELETE FROM drawings WHERE id = ? AND uid = ?', id, uid]),
     ]),
     meta: async key => (await one('SELECT value FROM meta WHERE key = ?', key))?.value ?? null,
-    setMeta: (key, value) => tx([[PUT_META, key, value]]),
+    setMeta: (key, value) => (key.startsWith('login:') ? tx : change)([[PUT_META, key, value]]),
+    rev: async () => Number((await one("SELECT value FROM meta WHERE key = 'rev'"))?.value ?? 0),
     deleteMeta: key => tx([['DELETE FROM meta WHERE key = ?', key]]),
     exportAll: async () => ({
       instruments: await all('SELECT * FROM instruments'),
       watchlist: await all('SELECT id, flag, grp FROM watchlist ORDER BY pos'),
       drawings: (await all('SELECT id, data FROM drawings ORDER BY rowid')).map(r => ({ id: r.id, data: JSON.parse(r.data) })),
     }),
-    importAll: b => tx([
+    importAll: b => change([
       ...b.instruments.map(i => [PUT_INST, ...instArgs(i)]),
       ...b.watchlist.flatMap(w => [[ADD_WATCH, w.id], ['UPDATE watchlist SET flag = ?, grp = ? WHERE id = ?', w.flag, w.grp, w.id]]),
       ...b.drawings.map(d => [PUT_DRAW, d.data.uid, d.id, JSON.stringify(d.data)]),

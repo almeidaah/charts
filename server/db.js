@@ -84,6 +84,7 @@ export function openDb(file) {
     putDrawing: db.prepare(`INSERT INTO drawings (uid, id, data) VALUES (?, ?, ?)
       ON CONFLICT(uid) DO UPDATE SET data = excluded.data WHERE id = excluded.id`),
     delDrawing: db.prepare('DELETE FROM drawings WHERE id = ? AND uid = ?'),
+    bump: db.prepare(`INSERT INTO meta (key, value) VALUES ('rev', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)`),
     getMeta: db.prepare('SELECT value FROM meta WHERE key = ?'),
     putMeta: db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)'),
   };
@@ -94,19 +95,29 @@ export function openDb(file) {
     catch (e) { db.exec('ROLLBACK'); throw e; }
   }
 
+  // User data changes also move the revision, so open screens know when to refresh.
+  const bump = () => q.bump.run();
+  const change = fn => tx(() => { const r = fn(); bump(); return r; });
+  const putInst = i => q.putInst.run({
+    id: i.id, source: i.source, symbol: i.symbol, label: i.label, name: i.name ?? '',
+    type: i.type ?? '', exchange: i.exchange ?? '', currency: i.currency ?? '', tz: i.tz ?? 'UTC',
+  });
+  function mirrorWatchlist(list) {
+    const keep = new Set(list.map(i => i.id));
+    for (const i of q.watch.all()) if (!keep.has(i.id)) q.delWatch.run(i.id);
+    list.forEach((i, pos) => { putInst(i); q.addWatch.run(i.id); q.setPos.run(pos, i.id); q.setFlag.run(i.flag, i.id); q.setGrp.run(i.grp, i.id); });
+  }
+
   return {
     close: () => db.close(),
     instrument: id => q.getInst.get(id),
-    saveInstrument: i => q.putInst.run({
-      id: i.id, source: i.source, symbol: i.symbol, label: i.label, name: i.name ?? '',
-      type: i.type ?? '', exchange: i.exchange ?? '', currency: i.currency ?? '', tz: i.tz ?? 'UTC',
-    }),
+    saveInstrument: putInst,
     watchlist: () => q.watch.all(),
-    addToWatchlist: id => q.addWatch.run(id),
-    removeFromWatchlist: id => q.delWatch.run(id),
-    groupWatchlist: (id, grp) => q.setGrp.run(grp, id),
-    flagWatchlist: (id, flag) => q.setFlag.run(flag, id),
-    reorderWatchlist: ids => tx(() => ids.forEach((id, i) => q.setPos.run(i, id))),
+    addToWatchlist: id => change(() => q.addWatch.run(id)),
+    removeFromWatchlist: id => change(() => q.delWatch.run(id)),
+    groupWatchlist: (id, grp) => change(() => q.setGrp.run(grp, id)),
+    flagWatchlist: (id, flag) => change(() => q.setFlag.run(flag, id)),
+    reorderWatchlist: ids => change(() => ids.forEach((id, i) => q.setPos.run(i, id))),
     candles: (id, tf, since = -1e12) => q.candles.all(id, tf, since),
     lastCandles: (id, tf, n) => q.lastCandles.all(id, tf, n).reverse(),
     // Saves new bars; after a split (ratio != 1), older bars are rescaled first.
@@ -120,7 +131,7 @@ export function openDb(file) {
     coverage: () => q.coverage.all(),
     drawings: id => q.drawings.all(id).map(r => JSON.parse(r.data)),
     // Saves and deletes in one step, so undo/redo is never left halfway.
-    changeDrawings: (id, put, del) => tx(() => {
+    changeDrawings: (id, put, del) => change(() => {
       for (const d of put) q.putDrawing.run(d.uid, id, JSON.stringify(d));
       for (const uid of del) q.delDrawing.run(id, uid);
     }),
@@ -129,12 +140,28 @@ export function openDb(file) {
       watchlist: db.prepare('SELECT id, flag, grp FROM watchlist ORDER BY pos').all(),
       drawings: db.prepare('SELECT id, data FROM drawings ORDER BY rowid').all().map(r => ({ id: r.id, data: JSON.parse(r.data) })),
     }),
-    importAll: b => tx(() => {
+    importAll: b => change(() => {
       for (const { id, source, symbol, label, name, type, exchange, currency, tz } of b.instruments) q.putInst.run({ id, source, symbol, label, name, type, exchange, currency, tz });
       for (const w of b.watchlist) { q.addWatch.run(w.id); q.setFlag.run(w.flag, w.id); q.setGrp.run(w.grp, w.id); }
       for (const d of b.drawings) q.putDrawing.run(d.data.uid, d.id, JSON.stringify(d.data));
     }),
+    // Local copy of what is on the web version.
+    mirrorWatchlist: list => tx(() => mirrorWatchlist(list)),
+    mirrorDrawings: (id, items) => tx(() => {
+      const keep = new Set(items.map(d => d.uid));
+      for (const r of q.drawings.all(id)) { const d = JSON.parse(r.data); if (!keep.has(d.uid)) q.delDrawing.run(id, d.uid); }
+      for (const d of items) q.putDrawing.run(d.uid, id, JSON.stringify(d));
+    }),
+    mirrorAll: b => tx(() => {
+      for (const i of b.instruments) putInst(i);
+      const byId = new Map(b.instruments.map(i => [i.id, i]));
+      mirrorWatchlist(b.watchlist.map(w => ({ ...byId.get(w.id), ...w })));
+      db.exec('DELETE FROM drawings');
+      for (const d of b.drawings) q.putDrawing.run(d.data.uid, d.id, JSON.stringify(d.data));
+      for (const k of ['groups', 'indicators']) if (b.meta[k]) q.putMeta.run(k, JSON.stringify(b.meta[k]));
+    }),
+    rev: () => Number(q.getMeta.get('rev')?.value ?? 0),
     meta: key => q.getMeta.get(key)?.value ?? null,
-    setMeta: (key, value) => q.putMeta.run(key, value),
+    setMeta: (key, value) => { q.putMeta.run(key, value); if (key === 'groups' || key === 'indicators') bump(); },
   };
 }

@@ -159,6 +159,7 @@ Everything is in the `data` folder next to the program:
 - **Back up:** close Charts and copy the `data` folder.
 - **Move to another computer:** copy the `data` folder there while Charts is closed.
 - **Export and import:** **More > Export backup** saves your watchlist, groups, drawings and indicators in one file, without price history.
+- **Share with the web version:** **More > Web sync** makes the desktop use the same watchlist, groups, drawings and indicators as your site. See the [web guide](docs/web.md#use-the-same-data-everywhere).
 - **From portable to installed:** copy `setup.exe` into the portable folder and run it from there. On the first install it brings along the `data` folder next to it.
 
 Charts sends requests only to Yahoo Finance and Binance, to search symbols and fetch prices. There is no telemetry.
@@ -174,7 +175,7 @@ Prices come from public endpoints of Yahoo Finance and Binance. No key is needed
 
 What you download stays in your database, so intraday history keeps growing beyond these limits as you use the symbol.
 
-- Binance quotes refresh every few seconds. Yahoo quotes refresh about every 45 seconds and may be delayed by the exchange.
+- Binance quotes refresh every few seconds. Yahoo quotes refresh about every 15 seconds and may be delayed by the exchange. When a price moves, the digits that changed turn green or red for a moment.
 - Prices are adjusted for splits but not for dividends.
 - The Yahoo Finance endpoints are unofficial, and may change or limit requests at any time. Check each provider's terms before using their data for anything beyond personal use.
 

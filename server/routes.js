@@ -1,7 +1,9 @@
 // API routes, shared by the desktop (SQLite) and the web (Turso). "store" keeps user data; "market" fetches prices.
 import { TIMEFRAMES } from './timeframes.js';
 
-export class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
+import { HttpError } from './errors.js';
+
+export { HttpError };
 
 const FLAGS = ['', 'red', 'blue', 'green', 'amber', 'violet'];
 const UID = /^[\w-]{6,40}$/;
@@ -73,6 +75,8 @@ export function createRoutes({ store, market, extra = {} }) {
       await store.reorderWatchlist(ids);
       return ok;
     },
+    // Goes up with every change, so open screens know when to refresh.
+    'GET /api/rev': async () => ({ rev: await store.rev() }),
     'GET /api/groups': () => meta('groups', {}),
     'PUT /api/groups': async ({ body }) => {
       const g = await body();

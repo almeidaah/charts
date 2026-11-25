@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join, extname, normalize, sep } from 'node:path';
 import { openDb } from './db.js';
+import { createLinkedStore } from './store-linked.js';
 import { createMarket, dayStats } from './market.js';
 import { createRoutes, HttpError, readJson } from './routes.js';
 import { TIMEFRAMES } from './timeframes.js';
@@ -12,7 +13,8 @@ const PUBLIC = join(ROOT, 'public');
 const PORT = Number(process.env.PORT ?? 5180);
 
 const db = openDb(process.env.CHARTS_DB ?? join(ROOT, 'data', 'market.db'));
-const market = createMarket(db);
+const store = createLinkedStore(db); // shares user data with the web version, when connected
+const market = createMarket(store);
 
 // Starter watchlist, used only on the first run.
 const SEED = [
@@ -21,6 +23,7 @@ const SEED = [
 ];
 
 async function seed() {
+  if (store.linkStatus()) return; // the web version already has the watchlist
   const saved = db.meta('seed_pending');
   const pending = saved ? JSON.parse(saved) : SEED;
   const failed = [];
@@ -43,7 +46,7 @@ async function syncAll() {
 }
 
 const routes = createRoutes({
-  store: db,
+  store,
   market: {
     ...market,
     candles(inst, tf, opts) {
@@ -57,7 +60,15 @@ const routes = createRoutes({
       const list = db.watchlist(), data = await market.quotes(list);
       return Object.fromEntries(list.map(i => [i.id, { ...data[i.id], ...dayStats(db.lastCandles(i.id, '1d', 366)) }]));
     },
-    'GET /api/status': () => ({ sync: syncJob, coverage: db.coverage() }),
+    'GET /api/status': () => ({ sync: syncJob, coverage: db.coverage(), link: store.linkStatus() }),
+    'POST /api/link': async ({ body }) => {
+      const { url, password } = await body();
+      if (typeof url !== 'string' || typeof password !== 'string') throw new HttpError(400, 'Enter the address and the password');
+      const r = await store.connect(url, password);
+      syncAll();
+      return r;
+    },
+    'DELETE /api/link': async () => { await store.disconnect(); return { ok: true }; },
     'POST /api/sync': async ({ body }) => { await body(); syncAll(); return { ok: true }; },
   },
 });
