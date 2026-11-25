@@ -92,6 +92,7 @@ export function createLinkedStore(db, fetchFn = (...a) => fetch(...a)) {
       const { res } = await call(url, null, 'POST', 'login', { password }, fetchFn);
       const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0];
       if (!cookie) throw new HttpError(502, 'Your site did not accept the sign-in');
+      if ((await call(url, cookie, 'GET', 'status', null, fetchFn)).data.role === 'guest') throw new HttpError(403, 'Web sync needs the owner password, not the guest one');
 
       const there = (await call(url, cookie, 'GET', 'backup', null, fetchFn)).data, here = db.exportAll();
       const ids = new Set(there.watchlist.map(w => w.id)), uids = new Set(there.drawings.map(d => d.data.uid));

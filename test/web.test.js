@@ -79,10 +79,10 @@ test('web: sessions expire and end when the password changes', async () => {
   const store = { meta: async () => null, setMeta: async () => {}, deleteMeta: async () => {} };
   const make = password => createAuth({ password, secret: 't', store, now: () => now });
   const cookie = (await make(PASSWORD).login(PASSWORD, 'ip')).cookie.split(';')[0];
-  assert.equal(make(PASSWORD).check(cookie), true);
-  assert.equal(make('another password 1').check(cookie), false);
+  assert.equal(make(PASSWORD).check(cookie), 'owner');
+  assert.equal(make('another password 1').check(cookie), null);
   now += 181 * day * 1000;
-  assert.equal(make(PASSWORD).check(cookie), false);
+  assert.equal(make(PASSWORD).check(cookie), null);
   assert.throws(() => make('short'));
 });
 

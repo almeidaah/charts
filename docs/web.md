@@ -37,9 +37,21 @@ Each push to `main` publishes a new version the same way. To change the password
 
 - You make it up and type it in `APP_PASSWORD`. It exists only in your Vercel project: not in the code, not in the database, and not in anyone else's site.
 - Every copy of Charts is separate. Whoever publishes their own site has their own password and their own database.
-- There are no user accounts. Everyone who has the password sees and edits the same watchlist and drawings, so do not share it.
+- There are no user accounts. Everyone who has the password sees and edits the same watchlist and drawings, so do not share it. To let others try the site, use a guest password.
 - Each device stays signed in for 180 days. Eight wrong attempts lock that address for 15 minutes.
 - Forgot it? Set a new `APP_PASSWORD` in Vercel and redeploy. Your data is kept.
+
+### Guest password (optional)
+
+Add `GUEST_PASSWORD` in Vercel, with at least 12 characters and different from `APP_PASSWORD`, and redeploy. People who sign in with it get a separate area:
+
+- It starts with a small sample list and never shows your data.
+- All guests share it, and can add symbols and draw. It is limited to 40 symbols and 300 drawings.
+- A **Guest** badge shows which area is open, and guests stay signed in for one day.
+- Guests cannot import backups or use Web sync.
+- **More > Reset guest list** restores the sample. Only you see it, on the website.
+
+To end guest access, delete the variable and redeploy. Guest use counts toward your Vercel and Turso limits, so share it with people you know.
 
 ## 3. Check it
 

@@ -10,7 +10,7 @@ const PUBLIC = join(import.meta.dirname, '..', 'public');
 const PORT = Number(process.env.PORT ?? 5190);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 const { headers: [{ headers }] } = JSON.parse(await readFile(join(import.meta.dirname, '..', 'vercel.json'), 'utf8'));
-const api = createHandler({ APP_PASSWORD: process.env.APP_PASSWORD, TURSO_DATABASE_URL: 'libsql://local', TURSO_AUTH_TOKEN: 'local' }, { fetchFn: fakeTurso().fetch });
+const api = createHandler({ APP_PASSWORD: process.env.APP_PASSWORD, GUEST_PASSWORD: process.env.GUEST_PASSWORD, TURSO_DATABASE_URL: 'libsql://local', TURSO_AUTH_TOKEN: 'local' }, { fetchFn: fakeTurso().fetch });
 
 http.createServer(async (req, res) => {
   for (const h of headers) res.setHeader(h.key, h.value);

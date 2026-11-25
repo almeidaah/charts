@@ -54,7 +54,7 @@ try { Object.assign(state, JSON.parse(localStorage.getItem('view') ?? '{}')); } 
 if (!TFS.includes(state.tf)) state.tf = '1d';
 const save = () => { try { localStorage.setItem('view', JSON.stringify(state)); } catch { /* no storage */ } };
 
-let list = [], quotes = {}, coverage = [], current = null, loadSeq = 0, cloud = false, editing = false, link = null, rev = null;
+let list = [], quotes = {}, coverage = [], current = null, loadSeq = 0, cloud = false, editing = false, link = null, rev = null, role = 'owner', guestAccess = 'off';
 
 // ---------- phone ----------
 const phone = matchMedia('(max-width: 860px)');
@@ -469,7 +469,8 @@ async function refreshQuotes() {
 async function refreshStatus() {
   try {
     const s = await api('status');
-    cloud = !!s.cloud;
+    cloud = !!s.cloud; role = s.role ?? 'owner'; guestAccess = s.guest ?? 'off';
+    $('guestBadge').hidden = role !== 'guest';
     for (const v of document.querySelectorAll('.version')) v.textContent = s.version ? `v${s.version}` : '';
     document.body.classList.toggle('cloud', cloud);
     if (cloud) { $('syncInfo').textContent = list.length === 1 ? '1 symbol' : `${list.length} symbols`; return; }
@@ -642,16 +643,22 @@ $('moreBtn').onclick = () => {
   const d = $('moreDialog'), item = (text, sub, run) => { const b = el('button', 'item'); b.append(el('b', '', text), el('span', '', sub)); b.onclick = run; return b; };
   const parts = [el('h2', '', 'More'),
     item('Export backup', 'Watchlist, groups, drawings and indicators in one file', exportBackup),
-    item('Import backup', 'Adds the contents of a backup file to what is here', () => $('backupFile').click())];
+    ...(role === 'guest' ? [] : [item('Import backup', 'Adds the contents of a backup file to what is here', () => $('backupFile').click())])];
   if (cloud) {
     const out = el('p', 'sub');
-    parts.push(item('Connection test', 'Checks the database and the price providers', async () => {
+    if (guestAccess === 'on') parts.push(item('Reset guest list', 'Deletes everything guests added and restores the sample list', async () => {
+      if (!confirm('Reset the guest list? Your own list is not affected.')) return;
+      try { await api('guest/reset', { method: 'POST', json: {} }); toast('The guest list was reset.'); } catch (e) { toast(e.message); }
+    }));
+    else if (guestAccess !== 'off') parts.push(el('p', 'sub', `Guest access is off: ${guestAccess}`));
+    if (role !== 'guest') parts.push(item('Connection test', 'Checks the database and the price providers', async () => {
       out.textContent = 'Testing…';
       try {
         const r = await api('selftest');
         out.textContent = Object.entries(r).map(([k, v]) => `${k}: ${v.ok ? `ok, ${v.ms} ms` : v.error}`).join('\n');
       } catch (e) { out.textContent = e.message; }
-    }), out, item('Sign out', 'On this device', async () => {
+    }), out);
+    parts.push(item('Sign out', 'On this device', async () => {
       try { await api('logout', { method: 'POST', json: {} }); } catch { /* already out */ }
       try { await caches.delete('history'); } catch { /* none */ }
       location.reload();
