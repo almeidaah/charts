@@ -96,6 +96,14 @@ test('web: incomplete setup and other origins are refused', async () => {
   try { assert.equal((await o.call('GET', '/api/ping', null, { Origin: 'https://evil.test' })).status, 403); } finally { o.close(); }
 });
 
+test('web: settings with a prefix from the database integration work', async () => {
+  const s = await site({ TURSO_DATABASE_URL: '', TURSO_AUTH_TOKEN: '', STORAGE_TURSO_DATABASE_URL: 'libsql://db.test', STORAGE_TURSO_AUTH_TOKEN: 'token' });
+  try {
+    assert.equal((await s.login()).status, 200);
+    assert.deepEqual((await s.call('GET', '/api/watchlist')).data, []);
+  } finally { s.close(); }
+});
+
 test('web: watchlist, groups, drawings and indicators are stored', async () => {
   const s = await site();
   try {

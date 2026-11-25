@@ -8,12 +8,16 @@ export function createHandler(env, { fetchFn, providers } = {}) {
   let app = null;
   function boot() {
     if (app) return app;
-    for (const k of ['APP_PASSWORD', 'TURSO_DATABASE_URL', 'TURSO_AUTH_TOKEN']) {
-      if (!env[k]) throw new HttpError(503, `Setup is incomplete: ${k} is missing in the Vercel project settings`);
-    }
-    const store = openTurso(env.TURSO_DATABASE_URL.trim(), env.TURSO_AUTH_TOKEN.trim(), fetchFn);
+    // The Vercel integration may add a prefix to the names, such as STORAGE_TURSO_DATABASE_URL.
+    const setting = name => {
+      const key = env[name] ? name : Object.keys(env).find(k => k.endsWith(`_${name}`) && env[k]);
+      if (!key) throw new HttpError(503, `Setup is incomplete: ${name} is missing in the Vercel project settings`);
+      return env[key].trim();
+    };
+    const url = setting('TURSO_DATABASE_URL'), token = setting('TURSO_AUTH_TOKEN'), password = setting('APP_PASSWORD');
+    const store = openTurso(url, token, fetchFn);
     let auth;
-    try { auth = createAuth({ password: env.APP_PASSWORD, secret: env.TURSO_AUTH_TOKEN, store }); }
+    try { auth = createAuth({ password, secret: token, store }); }
     catch (e) { throw new HttpError(503, `Setup is incomplete: ${e.message}`); }
     const market = createRemoteMarket(store, providers);
     const attempt = async fn => { const t = Date.now(); try { await fn(); return { ok: true, ms: Date.now() - t }; } catch (e) { return { ok: false, error: e.message }; } };
