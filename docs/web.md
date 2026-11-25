@@ -43,15 +43,15 @@ Each push to `main` publishes a new version the same way. To change the password
 
 ### Guest password (optional)
 
-Add `GUEST_PASSWORD` in Vercel, with at least 12 characters and different from `APP_PASSWORD`, and redeploy. People who sign in with it get a separate area:
+Add `GUEST_PASSWORD` in Vercel, with at least 12 characters and different from `APP_PASSWORD`, and redeploy. People who sign in with it get a read-only area:
 
-- It starts with a small sample list and never shows your data.
-- All guests share it, and can add symbols and draw. It is limited to 40 symbols and 300 drawings.
+- It shows a fixed sample list and never your data. Guests cannot change anything on the site.
+- They can still draw and change indicators, colors and groups. Those stay in their own browser.
 - A **Guest** badge shows which area is open, and guests stay signed in for one day.
-- Guests cannot import backups or use Web sync.
-- **More > Reset guest list** restores the sample. Only you see it, on the website.
+- Signing in with the guest password never counts as a wrong attempt, so many people can share it. Do not use a password you use elsewhere.
+- Web sync does not accept it.
 
-To end guest access, delete the variable and redeploy. Guest use counts toward your Vercel and Turso limits, so share it with people you know.
+To end guest access, delete the variable and redeploy. Guest use counts toward your Vercel limits, and price requests to Yahoo and Binance come from your site.
 
 ## 3. Check it
 

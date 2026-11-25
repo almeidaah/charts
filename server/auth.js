@@ -23,6 +23,11 @@ export function createAuth({ password, guestPassword = '', secret, store, now = 
   const guests = guestPassword && !guestProblem(password, guestPassword);
   const signOwner = signer('charts', password), signGuest = guests ? signer('charts-guest', guestPassword) : null;
 
+  function session(mark, days, sign) {
+    const exp = now() + days * 86400_000;
+    return `${COOKIE}=${mark}${exp}.${sign(exp)}; Path=/; Max-Age=${days * 86400}; Secure; HttpOnly; SameSite=Lax`;
+  }
+
   return {
     // 'owner', 'guest' or null.
     check(cookieHeader) {
@@ -32,22 +37,19 @@ export function createAuth({ password, guestPassword = '', secret, store, now = 
       return sign && exp && sig && /^\d+$/.test(exp) && Number(exp) > now() && same(sig, sign(exp)) ? (guest ? 'guest' : 'owner') : null;
     },
 
+    // The guest password is meant to be shared, so it does not count as an attempt and cannot reset the count.
     // Returns the cookie, or null for a wrong password. Too many attempts from one address lock it for 15 minutes.
     async login(given, ip) {
+      if (guests && typeof given === 'string' && same(given, guestPassword)) return { cookie: session('g.', GUEST_DAYS, signGuest) };
       const k = 'login:' + createHash('sha256').update(ip || 'unknown').digest('hex').slice(0, 24);
       const saved = JSON.parse(await store.meta(k) ?? '{"n":0,"at":0}');
       const fails = now() - saved.at < LOCK_MS ? saved.n : 0;
       if (fails >= MAX_FAILS) return { locked: true };
       // Count the attempt before checking, so parallel attempts cannot slip through.
       await store.setMeta(k, JSON.stringify({ n: fails + 1, at: now() }));
-      const owner = typeof given === 'string' && same(given, password);
-      const guest = !owner && guests && typeof given === 'string' && same(given, guestPassword);
-      if (!owner && !guest) return { cookie: null };
-      // A guest sign-in does not clear the count: it would allow endless guesses at the owner's password.
-      if (owner) await store.deleteMeta(k);
-      const days = owner ? OWNER_DAYS : GUEST_DAYS, exp = now() + days * 86400_000;
-      const value = owner ? `${exp}.${signOwner(exp)}` : `g.${exp}.${signGuest(exp)}`;
-      return { cookie: `${COOKIE}=${value}; Path=/; Max-Age=${days * 86400}; Secure; HttpOnly; SameSite=Lax` };
+      if (typeof given !== 'string' || !same(given, password)) return { cookie: null };
+      await store.deleteMeta(k);
+      return { cookie: session('', OWNER_DAYS, signOwner) };
     },
     logout: () => `${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`,
   };

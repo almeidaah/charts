@@ -1,7 +1,5 @@
-// Guest access on the web version: its own small watchlist, kept apart from the owner's data.
+// Guest access on the web version: a fixed sample list, read-only. Nothing is read from or written to the database.
 import { HttpError } from './errors.js';
-
-export const LIMITS = { symbols: 40, instruments: 300, drawings: 300, drawingBytes: 20_000, settingBytes: 20_000 };
 
 const crypto = (symbol, base, quote) => ({ id: `binance:${symbol}`, source: 'binance', symbol, label: symbol, name: `${base} / ${quote}`, type: 'CRYPTOCURRENCY', exchange: 'Binance', currency: quote, tz: 'UTC' });
 const yahoo = (symbol, label, name, type, exchange, currency, tz) => ({ id: `yahoo:${symbol}`, source: 'yahoo', symbol, label, name, type, exchange, currency, tz });
@@ -18,46 +16,23 @@ export const SAMPLE = [
   yahoo('^BVSP', 'IBOV', 'IBOVESPA', 'INDEX', 'São Paulo', 'BRL', SP),
   yahoo('GC=F', 'GOLD', 'Gold', 'FUTURE', 'COMEX', 'USD', NY),
 ];
-const sampleBackup = { instruments: SAMPLE, watchlist: SAMPLE.map(i => ({ id: i.id, flag: '', grp: '' })), drawings: [] };
 
-// Wraps the guest tables: fills them with the sample on first use, and keeps them small.
-export function createGuestStore(store) {
-  let ready = null;
-  function seed() {
-    ready ??= (async () => {
-      if (await store.meta('seeded')) return;
-      await store.importAll(sampleBackup);
-      await store.setMeta('seeded', '1');
-    })().catch(e => { ready = null; throw e; });
-    return ready;
-  }
-  const full = what => new HttpError(403, `The guest area is limited to ${what}`);
-  return {
-    ...store,
-    watchlist: async () => { await seed(); return store.watchlist(); },
-    instrument: async id => { await seed(); return store.instrument(id); },
-    async saveInstrument(i) {
-      if (await store.count('instruments') >= LIMITS.instruments) throw full(`${LIMITS.instruments} different symbols`);
-      return store.saveInstrument(i);
-    },
-    async addToWatchlist(id) {
-      if (await store.count('watchlist') >= LIMITS.symbols) throw full(`${LIMITS.symbols} symbols`);
-      return store.addToWatchlist(id);
-    },
-    async changeDrawings(id, put, del) {
-      if (put.some(d => JSON.stringify(d).length > LIMITS.drawingBytes)) throw full('smaller drawings');
-      if (put.length && await store.count('drawings') + put.length > LIMITS.drawings) throw full(`${LIMITS.drawings} drawings`);
-      return store.changeDrawings(id, put, del);
-    },
-    async setMeta(key, value) {
-      if (value.length > LIMITS.settingBytes) throw full('smaller settings');
-      return store.setMeta(key, value);
-    },
-    // Back to the sample list.
-    async reset() {
-      await store.clear();
-      ready = null;
-      await seed();
-    },
+// The only routes a guest can use. Drawings, indicators and groups stay in the guest's own browser.
+const ALLOWED = new Set(['GET /api/status', 'GET /api/watchlist', 'GET /api/quotes', 'GET /api/candles', 'GET /api/icon']);
+export const guestMay = (method, path) => ALLOWED.has(`${method} ${path}`);
+
+export const guestStore = {
+  watchlist: async () => SAMPLE.map(i => ({ ...i, flag: '', grp: '' })),
+  instrument: async id => SAMPLE.find(i => i.id === id) ?? null,
+};
+
+// Protects the price providers from one address asking too much. Kept in memory, so it is approximate.
+export function createLimiter({ max = 240, windowMs = 60_000, now = Date.now } = {}) {
+  let start = now(), hits = new Map();
+  return ip => {
+    if (now() - start >= windowMs) { start = now(); hits = new Map(); }
+    const n = (hits.get(ip) ?? 0) + 1;
+    hits.set(ip, n);
+    if (n > max) throw new HttpError(429, 'Too many requests. Wait a minute.');
   };
 }

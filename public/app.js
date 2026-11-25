@@ -5,6 +5,7 @@ import { mountIndicators } from './legend.js';
 import { withDefaults } from './indicators.js';
 import { createTicks, firstChange } from './ticks.js';
 import { logo } from './logos.js';
+import { createGuestLocal } from './guest.js';
 import { createLive, applyTick } from './live.js';
 import { AUTO_GROUPS, arrange, autoGroup, groupOf, cleanName } from './groups.js';
 
@@ -18,7 +19,12 @@ async function api(path, opts = {}) {
   pending++; writes++;
   try { return await request(path, opts); } finally { pending--; }
 }
+const guest = createGuestLocal();
 async function request(path, { method = 'GET', json } = {}) {
+  if (role === 'guest') {
+    const local = guest.handle(path, method, json);
+    if (local !== undefined) return local;
+  }
   let res;
   try {
     res = await fetch('/api/' + path, {
@@ -29,7 +35,7 @@ async function request(path, { method = 'GET', json } = {}) {
   try { data = await res.json(); } catch { throw new Error(`Error ${res.status}`); }
   if (res.status === 401) showLogin();
   if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
-  return data;
+  return role === 'guest' && method === 'GET' && path === 'watchlist' ? guest.apply(data) : data;
 }
 
 let toastTimer;
@@ -466,11 +472,15 @@ async function refreshQuotes() {
   } catch { /* next cycle */ }
 }
 
+function setRole(s) {
+  role = s.role ?? 'owner'; guestAccess = s.guest ?? 'off';
+  $('guestBadge').hidden = role !== 'guest';
+  document.body.classList.toggle('guest', role === 'guest');
+}
 async function refreshStatus() {
   try {
     const s = await api('status');
-    cloud = !!s.cloud; role = s.role ?? 'owner'; guestAccess = s.guest ?? 'off';
-    $('guestBadge').hidden = role !== 'guest';
+    cloud = !!s.cloud; setRole(s);
     for (const v of document.querySelectorAll('.version')) v.textContent = s.version ? `v${s.version}` : '';
     document.body.classList.toggle('cloud', cloud);
     if (cloud) { $('syncInfo').textContent = list.length === 1 ? '1 symbol' : `${list.length} symbols`; return; }
@@ -499,7 +509,7 @@ const interacting = () => pending || indTimer || editing || layer.draft || layer
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 async function checkChanges() {
-  if (document.hidden || interacting()) return;
+  if (document.hidden || role === 'guest' || interacting()) return;
   try {
     const now = (await api('rev')).rev;
     if (now == null || now === rev) return;
@@ -538,6 +548,7 @@ let found = [], shown = [], sel = 0, group = 'All', searchSeq = 0, searchTimer;
 
 function openSearch(initial = '') {
   if ($('search').open) return;
+  if (role === 'guest') { toast('The guest list is fixed.'); return; }
   $('search').showModal();
   $('q').value = initial; found = []; renderResults(initial ? 'Searching…' : 'Type to search stocks, B3, ETFs, forex and crypto.');
   $('q').focus();
@@ -642,15 +653,13 @@ $('backupFile').onchange = async e => {
 $('moreBtn').onclick = () => {
   const d = $('moreDialog'), item = (text, sub, run) => { const b = el('button', 'item'); b.append(el('b', '', text), el('span', '', sub)); b.onclick = run; return b; };
   const parts = [el('h2', '', 'More'),
-    item('Export backup', 'Watchlist, groups, drawings and indicators in one file', exportBackup),
-    ...(role === 'guest' ? [] : [item('Import backup', 'Adds the contents of a backup file to what is here', () => $('backupFile').click())])];
+    ...(role === 'guest' ? [el('p', 'sub', 'You are a guest. The list is fixed, and your drawings and settings stay in this browser only.'),
+      item('Clear my changes', 'Deletes your drawings and settings from this browser', () => { guest.clear(); location.reload(); })]
+      : [item('Export backup', 'Watchlist, groups, drawings and indicators in one file', exportBackup),
+        item('Import backup', 'Adds the contents of a backup file to what is here', () => $('backupFile').click())])];
   if (cloud) {
     const out = el('p', 'sub');
-    if (guestAccess === 'on') parts.push(item('Reset guest list', 'Deletes everything guests added and restores the sample list', async () => {
-      if (!confirm('Reset the guest list? Your own list is not affected.')) return;
-      try { await api('guest/reset', { method: 'POST', json: {} }); toast('The guest list was reset.'); } catch (e) { toast(e.message); }
-    }));
-    else if (guestAccess !== 'off') parts.push(el('p', 'sub', `Guest access is off: ${guestAccess}`));
+    if (guestAccess !== 'off') parts.push(el('p', 'sub', guestAccess === 'on' ? 'Guest access is on (read-only).' : `Guest access is off: ${guestAccess}`));
     if (role !== 'guest') parts.push(item('Connection test', 'Checks the database and the price providers', async () => {
       out.textContent = 'Testing…';
       try {
@@ -748,6 +757,7 @@ document.addEventListener('keydown', e => {
 // Loads everything that depends on the server. Runs again after signing in or importing.
 async function start() {
   try {
+    setRole(await api('status')); // first: it decides where everything else comes from
     rev = (await api('rev')).rev;
     list = await api('watchlist');
   } catch (e) { message(e.message); return; }
@@ -769,9 +779,11 @@ async function init() {
   const tick = () => { $('clock').textContent = new Date().toLocaleTimeString('en-GB'); };
   tick(); setInterval(tick, 1000);
   await start();
-  setInterval(refreshQuotes, 5_000);
+  // Guests ask less often; their crypto prices are still live.
+  const every = (ms, guestMs, run) => { let last = 0; setInterval(() => { if (role === 'guest' && Object.keys(quotes).length && Date.now() - last < guestMs) return; last = Date.now(); run(); }, ms); };
+  every(5_000, 14_000, refreshQuotes);
   setInterval(checkChanges, 4_000);
-  setInterval(poll, 10_000);
+  every(10_000, 29_000, poll);
   document.addEventListener('visibilitychange', () => { live.check(); if (!document.hidden) { checkChanges(); refreshQuotes(); poll(); } });
 }
 init();

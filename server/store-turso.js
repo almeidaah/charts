@@ -23,11 +23,9 @@ const encode = v => (v == null ? { type: 'null' }
   : typeof v === 'number' ? { type: 'float', value: v }
   : { type: 'text', value: String(v) });
 const decode = c => (c.type === 'null' ? null : c.type === 'integer' || c.type === 'float' ? Number(c.value) : c.value);
-const TABLES = /\b(instruments|watchlist|drawings|drawings_by_id|meta)\b/g;
+const toStmt = ([sql, ...args]) => ({ sql, args: args.map(encode), want_rows: true });
 
-// prefix keeps a second, separate set of tables in the same database (the guest area).
-export function openTurso(url, token, fetchFn = fetch, prefix = '') {
-  const toStmt = ([sql, ...args]) => ({ sql: prefix ? sql.replace(TABLES, `${prefix}$1`) : sql, args: args.map(encode), want_rows: true });
+export function openTurso(url, token, fetchFn = fetch) {
   const endpoint = url.replace(/^libsql:/, 'https:').replace(/\/+$/, '') + '/v2/pipeline';
 
   async function pipeline(request) {
@@ -93,9 +91,6 @@ export function openTurso(url, token, fetchFn = fetch, prefix = '') {
     meta: async key => (await one('SELECT value FROM meta WHERE key = ?', key))?.value ?? null,
     setMeta: (key, value) => (key.startsWith('login:') ? tx : change)([[PUT_META, key, value]]),
     rev: async () => Number((await one("SELECT value FROM meta WHERE key = 'rev'"))?.value ?? 0),
-    count: async table => Number((await one(`SELECT COUNT(*) AS n FROM ${table}`)).n),
-    // Empties this set of tables. Only the guest area uses it.
-    clear: () => { if (!prefix) throw new Error('Only the guest area can be cleared'); return tx(['watchlist', 'drawings', 'instruments', 'meta'].map(t => [t === 'meta' ? "DELETE FROM meta WHERE key <> 'rev'" : `DELETE FROM ${t}`]).concat([BUMP])); },
     deleteMeta: key => tx([['DELETE FROM meta WHERE key = ?', key]]),
     exportAll: async () => ({
       instruments: await all('SELECT * FROM instruments'),

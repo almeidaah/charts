@@ -10,7 +10,7 @@
 - Local storage of history, drawings and settings
 - Windows launcher, installer and portable version
 - Web version with password, phone layout and Home Screen icon
-- Guest password on the web version, with a separate list
+- Read-only guest password on the web version
 - Live sync between the desktop and the web version
 - Price changes highlighted digit by digit
 

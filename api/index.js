@@ -1,11 +1,13 @@
 // Single Vercel function: handles everything under /api/*.
 import pkg from '../package.json' with { type: 'json' };
 import { createAuth, guestProblem } from '../server/auth.js';
-import { createGuestStore } from '../server/guest.js';
+import { createLimiter, guestMay, guestStore } from '../server/guest.js';
 import { createRemoteMarket } from '../server/remote-market.js';
 import { createIcons, memoryCache } from '../server/icons.js';
 import { createRoutes, HttpError, readJson, sendResult } from '../server/routes.js';
 import { openTurso } from '../server/store-turso.js';
+
+const addressOf = req => req.headers['x-real-ip'] ?? (req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
 
 export function createHandler(env, { fetchFn, providers, iconFetch } = {}) {
   let app = null;
@@ -25,13 +27,11 @@ export function createHandler(env, { fetchFn, providers, iconFetch } = {}) {
     catch (e) { throw new HttpError(503, `Setup is incomplete: ${e.message}`); }
     const icons = createIcons(memoryCache(), iconFetch);
     const attempt = async fn => { const t = Date.now(); try { await fn(); return { ok: true, ms: Date.now() - t }; } catch (e) { return { ok: false, error: e.message }; } };
-    const guestStore = createGuestStore(openTurso(url, token, fetchFn, 'guest_'));
     const guest = guestPassword ? guestProblem(password, guestPassword) ?? 'on' : 'off';
 
-    // The owner and the guests get the same routes over separate data.
+    // Guests use the same code over a fixed sample list; see server/guest.js.
     function routesFor(role, store) {
       const market = createRemoteMarket(store, providers);
-      const ownerOnly = () => { throw new HttpError(403, 'Not available to guests'); };
       const extra = {
         'GET /api/status': () => ({ version: pkg.version, cloud: true, role, ...(role === 'owner' ? { guest } : {}), sync: { running: false, seeding: false, done: 0, total: 0, errors: [] }, coverage: [] }),
         'GET /api/quotes': async ({ query }) => {
@@ -46,13 +46,13 @@ export function createHandler(env, { fetchFn, providers, iconFetch } = {}) {
           yahoo: await attempt(() => market.candles({ id: 'yahoo:AAPL', source: 'yahoo', symbol: 'AAPL', type: 'EQUITY', tz: 'America/New_York' }, '1d')),
           binance: await attempt(() => market.candles({ id: 'binance:BTCUSDT', source: 'binance', symbol: 'BTCUSDT', type: 'CRYPTOCURRENCY', tz: 'UTC' }, '1d', { since: Math.floor(Date.now() / 1000) - 86400 })),
         }),
-        'POST /api/guest/reset': async () => { await guestStore.reset(); return { ok: true }; },
-        ...(role === 'guest' ? { 'POST /api/backup': ownerOnly, 'GET /api/selftest': ownerOnly, 'POST /api/guest/reset': ownerOnly } : {}),
       };
       return createRoutes({ store, market, icons, extra });
     }
     return (app = { auth, routes: { owner: routesFor('owner', ownerStore), guest: routesFor('guest', guestStore) } });
   }
+
+  const limitGuest = createLimiter();
 
   return async function handler(req, res) {
     const send = (status, data, headers = {}) => {
@@ -72,7 +72,7 @@ export function createHandler(env, { fetchFn, providers, iconFetch } = {}) {
       const { auth, routes: byRole } = boot();
       if (req.method === 'POST' && path === '/api/login') {
         const { password } = await readJson(req, 10_000);
-        const ip = req.headers['x-real-ip'] ?? (req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
+        const ip = addressOf(req);
         const r = await auth.login(password, ip);
         if (r.locked) throw new HttpError(429, 'Too many attempts. Try again in 15 minutes.');
         if (!r.cookie) throw new HttpError(403, 'Wrong password');
@@ -81,6 +81,10 @@ export function createHandler(env, { fetchFn, providers, iconFetch } = {}) {
       const role = auth.check(req.headers.cookie);
       if (!role) throw new HttpError(401, 'Sign in required');
       const routes = byRole[role];
+      if (role === 'guest' && path !== '/api/logout') {
+        limitGuest(addressOf(req));
+        if (!guestMay(req.method, path)) throw new HttpError(403, 'The guest area is read-only');
+      }
       if (req.method === 'POST' && path === '/api/logout') return send(200, { ok: true }, { 'Set-Cookie': auth.logout() });
       if (!routes.has(req.method, path)) throw new HttpError(404, 'Not found');
       sendResult(res, await routes.run(req.method, path, { query: url.searchParams, body: () => readJson(req) }));

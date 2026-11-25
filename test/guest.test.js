@@ -4,7 +4,8 @@ import http from 'node:http';
 import { once } from 'node:events';
 import { createHandler } from '../api/index.js';
 import { createAuth } from '../server/auth.js';
-import { SAMPLE, LIMITS } from '../server/guest.js';
+import { SAMPLE, createLimiter } from '../server/guest.js';
+import { createGuestLocal } from '../public/guest.js';
 import { iconSources } from '../server/icons.js';
 import { fakeTurso } from '../scripts/fake-turso.js';
 
@@ -33,80 +34,75 @@ async function site(env = {}) {
 const ids = r => r.data.map(i => i.id);
 const line = uid => ({ uid, tool: 'hline', pts: [{ t: 1, p: 2 }] });
 
-test('guest: starts with the sample list and never sees the owner', async () => {
+test('guest: sees the sample list and never the owner', async () => {
   const s = await site();
   try {
     const owner = await s.user(OWNER), guest = await s.user(GUEST);
     await owner.call('POST', 'watchlist', { id: 'yahoo:SECRET' });
-    await owner.call('POST', 'drawings', { id: 'yahoo:SECRET', put: [line('ownerline1')] });
-    await owner.call('PUT', 'groups', { on: true, order: ['Private'], closed: [] });
-    await owner.call('PUT', 'indicators', { mine: true });
-
-    assert.deepEqual(ids(await guest.call('GET', 'watchlist')), SAMPLE.map(i => i.id));
-    assert.equal((await guest.call('GET', 'drawings?id=yahoo:SECRET')).status, 404);
-    assert.equal((await guest.call('GET', 'icon?id=yahoo:SECRET')).status, 404);
-    assert.equal((await guest.call('GET', 'candles?id=yahoo:SECRET&tf=1d')).status, 404);
-    assert.deepEqual((await guest.call('GET', 'groups')).data, {});
-    assert.equal((await guest.call('GET', 'indicators')).data, null);
-    const backup = JSON.stringify((await guest.call('GET', 'backup')).data);
-    assert.ok(!/SECRET|ownerline|Private|mine/.test(backup));
+    await owner.call('POST', 'watchlist', { id: 'yahoo:AAPL' });
+    await owner.call('PUT', 'watchlist/flag', { id: 'yahoo:AAPL', flag: 'red' });
+    const r = await guest.call('GET', 'watchlist');
+    assert.deepEqual(ids(r), SAMPLE.map(i => i.id));
+    assert.ok(r.data.every(i => i.flag === '' && i.grp === ''));
+    for (const p of ['icon?id=yahoo:SECRET', 'candles?id=yahoo:SECRET&tf=1d']) assert.equal((await guest.call('GET', p)).status, 404);
+    assert.equal((await guest.call('GET', 'candles?id=yahoo:AAPL&tf=1d')).status, 200);
+    assert.equal((await guest.call('GET', 'quotes?focus=yahoo:SECRET')).data['yahoo:SECRET'], undefined);
+    assert.deepEqual([(await guest.call('GET', 'status')).data.role, (await owner.call('GET', 'status')).data.role], ['guest', 'owner']);
+    assert.equal((await owner.call('GET', 'status')).data.guest, 'on');
+    assert.equal((await guest.call('GET', 'status')).data.guest, undefined);
   } finally { s.close(); }
 });
 
-test('guest: changes stay in the guest area', async () => {
+test('guest: everything else is refused and the owner data does not move', async () => {
   const s = await site();
   try {
     const owner = await s.user(OWNER), guest = await s.user(GUEST);
     await owner.call('POST', 'watchlist', { id: 'yahoo:AAPL' });
-    await owner.call('POST', 'drawings', { id: 'yahoo:AAPL', put: [line('sameuid1')] });
-    const rev = (await owner.call('GET', 'rev')).data.rev;
-
-    await guest.call('POST', 'watchlist', { id: 'yahoo:NEW' });
-    await guest.call('DELETE', 'watchlist?id=yahoo:AAPL');
-    await guest.call('PUT', 'watchlist/flag', { id: 'yahoo:MSFT', flag: 'red' });
-    await guest.call('POST', 'drawings', { id: 'yahoo:AAPL', put: [{ ...line('sameuid1'), color: '#000' }] });
-    await guest.call('POST', 'drawings', { id: 'yahoo:AAPL', del: ['sameuid1'] });
-    await guest.call('PUT', 'indicators', { x: 1 });
-
-    assert.deepEqual(ids(await owner.call('GET', 'watchlist')), ['yahoo:AAPL']);
-    assert.deepEqual((await owner.call('GET', 'drawings?id=yahoo:AAPL')).data, [line('sameuid1')]);
-    assert.equal((await owner.call('GET', 'indicators')).data, null);
+    await owner.call('POST', 'drawings', { id: 'yahoo:AAPL', put: [line('ownerline1')] });
+    const before = JSON.stringify((await owner.call('GET', 'backup')).data), rev = (await owner.call('GET', 'rev')).data.rev;
+    const id = 'yahoo:AAPL';
+    for (const [m, p, b] of [
+      ['GET', 'drawings?id=' + id], ['GET', 'backup'], ['GET', 'groups'], ['GET', 'indicators'], ['GET', 'rev'], ['GET', 'selftest'], ['GET', 'search?q=a'],
+      ['POST', 'watchlist', { id: 'yahoo:NEW' }], ['DELETE', 'watchlist?id=' + id], ['PUT', 'watchlist/flag', { id, flag: 'red' }],
+      ['PUT', 'watchlist/group', { id, grp: 'x' }], ['PUT', 'watchlist/order', { ids: [id] }], ['POST', 'drawings', { id, put: [line('guestline1')], del: ['ownerline1'] }],
+      ['PUT', 'indicators', { a: 1 }], ['PUT', 'groups', { on: true, order: [], closed: [] }], ['POST', 'backup', { app: 'charts' }], ['POST', 'status', {}],
+    ]) assert.equal((await guest.call(m, p, b)).status, 403, m + ' ' + p);
+    assert.equal(JSON.stringify((await owner.call('GET', 'backup')).data), before);
     assert.equal((await owner.call('GET', 'rev')).data.rev, rev);
-    const second = await s.user(GUEST); // another guest shares the guest list
-    assert.ok(ids(await second.call('GET', 'watchlist')).includes('yahoo:NEW'));
+    assert.equal((await guest.call('POST', 'logout', {})).status, 200);
   } finally { s.close(); }
 });
 
-test('guest: some actions are for the owner only', async () => {
-  const s = await site();
-  try {
-    const owner = await s.user(OWNER), guest = await s.user(GUEST);
-    for (const [m, p, b] of [['POST', 'backup', { app: 'charts' }], ['GET', 'selftest'], ['POST', 'guest/reset', {}]]) assert.equal((await guest.call(m, p, b)).status, 403, p);
-    assert.deepEqual([(await guest.call('GET', 'status')).data.role, (await owner.call('GET', 'status')).data.role], ['guest', 'owner']);
-    assert.equal((await owner.call('GET', 'status')).data.guest, 'on');
-    assert.equal((await guest.call('GET', 'status')).data.guest, undefined);
-
-    await guest.call('POST', 'watchlist', { id: 'yahoo:NEW' });
-    await guest.call('POST', 'drawings', { id: 'yahoo:NEW', put: [line('guestline1')] });
-    await owner.call('POST', 'watchlist', { id: 'yahoo:MINE' });
-    assert.equal((await owner.call('POST', 'guest/reset', {})).status, 200);
-    assert.deepEqual(ids(await guest.call('GET', 'watchlist')), SAMPLE.map(i => i.id));
-    assert.equal((await guest.call('GET', 'drawings?id=yahoo:NEW')).status, 404);
-    assert.deepEqual(ids(await owner.call('GET', 'watchlist')), ['yahoo:MINE']);
-  } finally { s.close(); }
+test('guest: one address cannot ask too much', () => {
+  let now = 0;
+  const limit = createLimiter({ max: 3, windowMs: 1000, now: () => now });
+  for (let i = 0; i < 3; i++) limit('a');
+  assert.throws(() => limit('a'), /Too many/);
+  limit('b');
+  now = 1000;
+  limit('a');
 });
 
-test('guest: the area is kept small', async () => {
-  const s = await site();
-  try {
-    const guest = await s.user(GUEST);
-    await guest.call('GET', 'watchlist');
-    for (let i = SAMPLE.length; i < LIMITS.symbols; i++) assert.equal((await guest.call('POST', 'watchlist', { id: `yahoo:S${i}` })).status, 200);
-    assert.equal((await guest.call('POST', 'watchlist', { id: 'yahoo:TOOMANY' })).status, 403);
-    assert.equal((await guest.call('POST', 'drawings', { id: 'yahoo:AAPL', put: [{ ...line('bigone11'), text: 'x'.repeat(LIMITS.drawingBytes) }] })).status, 403);
-    assert.equal((await guest.call('POST', 'drawings', { id: 'yahoo:AAPL', put: Array.from({ length: LIMITS.drawings + 1 }, (_, i) => line(`many${1000 + i}`)) })).status, 403);
-    assert.equal((await guest.call('PUT', 'indicators', { a: 'x'.repeat(LIMITS.settingBytes) })).status, 403);
-  } finally { s.close(); }
+test('guest: drawings and settings stay in the browser', () => {
+  const m = new Map(), storage = () => ({ getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, v), removeItem: k => m.delete(k) });
+  const g = createGuestLocal(storage), id = 'yahoo:^GSPC', q = new URLSearchParams({ id });
+  assert.deepEqual(g.handle('drawings?' + q, 'GET'), []);
+  g.handle('drawings', 'POST', { id, put: [line('one'), line('two')] });
+  g.handle('drawings', 'POST', { id, put: [{ ...line('two'), color: 'x' }], del: ['one'] });
+  assert.deepEqual(createGuestLocal(storage).handle('drawings?' + q, 'GET'), [{ ...line('two'), color: 'x' }]);
+  g.handle('indicators', 'PUT', { a: 1 });
+  assert.deepEqual(g.handle('indicators', 'GET'), { a: 1 });
+  g.handle('watchlist/flag', 'PUT', { id: 'b', flag: 'red' });
+  g.handle('watchlist/order', 'PUT', { ids: ['b', 'a'] });
+  assert.deepEqual(g.apply(['a', 'b', 'c'].map(x => ({ id: x, flag: '', grp: '' }))).map(i => i.id + i.flag), ['bred', 'a', 'c']);
+  for (const [p, method] of [['watchlist', 'GET'], ['quotes?focus=', 'GET'], ['candles?id=a', 'GET'], ['status', 'GET'], ['logout', 'POST'], ['login', 'POST']]) assert.equal(g.handle(p, method, {}), undefined);
+  g.clear();
+  assert.equal(g.handle('indicators', 'GET'), null);
+  m.set('guest', '{broken');
+  assert.deepEqual(g.handle('drawings?' + q, 'GET'), []);
+  const refused = createGuestLocal(() => { throw new Error('denied'); });
+  assert.throws(() => refused.handle('indicators', 'PUT', {}), /could not save/);
+  assert.deepEqual(refused.handle('drawings?' + q, 'GET'), []);
 });
 
 test('guest: off without a password, or with a weak or repeated one; the owner is never affected', async () => {
@@ -141,13 +137,14 @@ test('guest: sessions are short, cannot be promoted, and end when the password i
   assert.equal(make(GUEST).check(own.replace('=', '=g.')), null);
 });
 
-test('guest: signing in as a guest does not allow more guesses at the owner password', async () => {
+test('guest: the shared password neither locks anyone out nor allows more guesses at the owner password', async () => {
   const s = await site();
   try {
+    for (let i = 0; i < 12; i++) assert.equal((await s.user(GUEST)).status, 200);
     const seen = [];
-    for (let i = 0; i < 5; i++) { seen.push((await s.user('wrong password!!')).status, (await s.user(GUEST)).status); }
-    assert.deepEqual(seen.slice(0, 8), [403, 200, 403, 200, 403, 200, 403, 200]);
-    assert.deepEqual(seen.slice(8), [429, 429]);
+    for (let i = 0; i < 9; i++) { seen.push((await s.user('wrong password!!')).status); assert.equal((await s.user(GUEST)).status, 200); }
+    assert.deepEqual(seen, [...Array(8).fill(403), 429]);
+    assert.equal((await s.user(OWNER)).status, 429);
   } finally { s.close(); }
 });
 
