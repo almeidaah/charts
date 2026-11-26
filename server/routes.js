@@ -5,7 +5,7 @@ import { HttpError } from './errors.js';
 
 export { HttpError };
 
-const FLAGS = ['', 'red', 'blue', 'green', 'amber', 'violet'];
+const FLAGS = ['', 'red', 'blue', 'green', 'amber', 'violet', 'cyan', 'pink'];
 const UID = /^[\w-]{6,40}$/;
 const ID = /^(yahoo|binance):\S{1,40}$/;
 const isObj = x => x && typeof x === 'object' && !Array.isArray(x);

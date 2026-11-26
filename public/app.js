@@ -53,7 +53,7 @@ const RANGES = [ // label, timeframe, days
   ['1D', '5m', 1], ['5D', '30m', 5], ['1M', '1h', 31], ['3M', '1d', 92], ['6M', '1d', 183],
   ['YTD', '1d', 'ytd'], ['1Y', '1d', 366], ['5Y', '1w', 1827], ['All', '1M', 'all'],
 ];
-const FLAGS = ['', 'red', 'blue', 'green', 'amber', 'violet'];
+const FLAGS = ['', 'red', 'blue', 'green', 'amber', 'violet', 'cyan', 'pink'];
 const TYPE_NAME = { EQUITY: 'Stock', ETF: 'ETF', INDEX: 'Index', CURRENCY: 'Forex', CRYPTOCURRENCY: 'Crypto', FUTURE: 'Future', MUTUALFUND: 'Fund' };
 
 const state = { id: null, tf: '1d', type: 'candles', log: true, side: true, details: true, draw: {}, styles: {} };
@@ -346,6 +346,7 @@ function listRow(inst) {
       el('span', tone(q.chg), q.chg == null ? '' : num(q.chg, d)),
       el('span', tone(q.pct), pct(q.pct)), el('span', tone(q.ext), pct(q.ext)), el('span', 'name', assetName(inst)), del);
     row.onclick = () => { if (!editing) open(inst.id); };
+    row.oncontextmenu = e => { e.preventDefault(); flagMenu(inst, e.clientX, e.clientY); };
     if (editing) editRow(row, inst, del);
     row.ondragstart = e => { e.dataTransfer.setData('text/plain', inst.id); e.dataTransfer.effectAllowed = 'move'; };
     row.ondragover = e => { e.preventDefault(); row.classList.add('drop'); };
@@ -389,11 +390,57 @@ function editRow(row, inst, del) {
   row.replaceChildren(row.children[0], row.children[1], row.children[2], box, del);
 }
 
-async function cycleFlag(inst) {
-  inst.flag = FLAGS[(FLAGS.indexOf(inst.flag) + 1) % FLAGS.length];
+const cycleFlag = inst => setFlag(inst, FLAGS[(FLAGS.indexOf(inst.flag) + 1) % FLAGS.length]);
+async function setFlag(inst, flag) {
+  const old = inst.flag;
+  if (old === flag) return;
+  inst.flag = flag;
   renderList();
-  try { await api('watchlist/flag', { method: 'PUT', json: { id: inst.id, flag: inst.flag } }); } catch (e) { toast(e.message); }
+  try { await api('watchlist/flag', { method: 'PUT', json: { id: inst.id, flag } }); }
+  catch (e) { inst.flag = old; renderList(); toast(e.message); }
 }
+async function unflagAll() {
+  const flagged = list.filter(i => i.flag);
+  for (const i of flagged) i.flag = '';
+  renderList();
+  try { for (const i of flagged) await api('watchlist/flag', { method: 'PUT', json: { id: i.id, flag: '' } }); }
+  catch (e) { toast(e.message); }
+}
+
+// Right-click menu of a row: pick the flag color, or click the current one to remove it.
+function flagMenu(inst, x, y) {
+  const menu = $('flagMenu');
+  const dots = el('div', 'dots');
+  for (const c of FLAGS.filter(Boolean)) {
+    const b = el('button', 'dot'), on = inst.flag === c;
+    b.dataset.c = c; b.setAttribute('role', 'menuitemradio'); b.setAttribute('aria-checked', on);
+    b.title = on ? 'Remove flag' : c[0].toUpperCase() + c.slice(1);
+    b.setAttribute('aria-label', b.title);
+    b.onclick = () => { closeFlagMenu(); setFlag(inst, on ? '' : c); };
+    dots.append(b);
+  }
+  const all = el('button', 'mitem', 'Unflag all symbols');
+  all.setAttribute('role', 'menuitem');
+  all.disabled = !list.some(i => i.flag);
+  all.onclick = () => { closeFlagMenu(); unflagAll(); };
+  menu.replaceChildren(el('div', 'mhead', `Flag/Unflag ${inst.label}`), dots, all);
+  menu.hidden = false;
+  const r = menu.getBoundingClientRect();
+  menu.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
+  menu.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
+  (dots.querySelector('[aria-checked="true"]') ?? dots.firstChild).focus();
+}
+function closeFlagMenu() { $('flagMenu').hidden = true; }
+document.addEventListener('pointerdown', e => { if (!$('flagMenu').hidden && !$('flagMenu').contains(e.target)) closeFlagMenu(); }, true);
+addEventListener('blur', closeFlagMenu);
+addEventListener('resize', closeFlagMenu);
+$('list').addEventListener('scroll', closeFlagMenu);
+$('flagMenu').addEventListener('keydown', e => {
+  e.stopPropagation();
+  const dots = [...$('flagMenu').querySelectorAll('.dot')], i = dots.indexOf(document.activeElement);
+  if (e.key === 'Escape') closeFlagMenu();
+  else if (i >= 0 && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); dots[(i + (e.key === 'ArrowRight' ? 1 : dots.length - 1)) % dots.length].focus(); }
+});
 async function move(id, beforeId) {
   const from = list.findIndex(i => i.id === id);
   if (from < 0 || id === beforeId) return;

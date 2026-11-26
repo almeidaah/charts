@@ -113,6 +113,8 @@ test('web: watchlist, groups, drawings and indicators are stored', async () => {
     assert.equal((await s.call('POST', '/api/watchlist', { id: 'yahoo:NOPE' })).status, 502);
     assert.equal((await s.call('POST', '/api/watchlist', { id: 'evil:1' })).status, 400);
     await s.call('PUT', '/api/watchlist/order', { ids: ['yahoo:BBB', 'yahoo:AAA'] });
+    await s.call('PUT', '/api/watchlist/flag', { id: 'yahoo:AAA', flag: 'pink' });
+    assert.equal((await s.call('PUT', '/api/watchlist/flag', { id: 'yahoo:AAA', flag: 'black' })).status, 400);
     await s.call('PUT', '/api/watchlist/flag', { id: 'yahoo:AAA', flag: 'red' });
     await s.call('PUT', '/api/watchlist/group', { id: 'yahoo:AAA', grp: 'Mine' });
     const list = (await s.call('GET', '/api/watchlist')).data;

@@ -72,9 +72,20 @@ footer button { font-size: 13px; }
 .flag { width: 18px; height: 100%; padding: 0; border-radius: 0; display: grid; place-items: center start; }
 .flag::before { content: ""; width: 6px; height: 16px; background: transparent; border-radius: 0 2px 2px 0; }
 .row:hover .flag::before { background: #3b4350; }
-.flag[data-c="red"]::before { background: #ef5350 !important; } .flag[data-c="blue"]::before { background: #4c8df0 !important; }
-.flag[data-c="green"]::before { background: #35a96f !important; } .flag[data-c="amber"]::before { background: #e0a83a !important; }
-.flag[data-c="violet"]::before { background: #a877e8 !important; }
+[data-c="red"] { --flag: #ef5350; } [data-c="blue"] { --flag: #4c8df0; } [data-c="green"] { --flag: #35a96f; } [data-c="amber"] { --flag: #e0a83a; }
+[data-c="violet"] { --flag: #a877e8; } [data-c="cyan"] { --flag: #22c3d6; } [data-c="pink"] { --flag: #ef8fb0; }
+.flag:not([data-c=""])::before { background: var(--flag) !important; }
+.menu { position: fixed; z-index: 10; min-width: 230px; padding: 6px; background: var(--raise); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px #0009; }
+.menu[hidden] { display: none; }
+.mhead { padding: 6px 8px; font-size: 13px; }
+.dots { display: flex; gap: 2px; padding: 2px 4px 6px; }
+.dot { width: 30px; height: 30px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.dot::before { content: ""; width: 16px; height: 16px; border-radius: 50%; background: var(--flag); }
+.dot[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--flag); }
+.dot:hover, .dot:focus-visible { background: var(--line); outline: none; }
+.mitem { display: block; width: 100%; text-align: left; padding: 7px 8px; color: var(--text); font-size: 13px; border-top: 1px solid var(--line); border-radius: 0 0 4px 4px; }
+.mitem:hover { background: var(--line); }
+.mitem:disabled { color: var(--muted); cursor: default; background: none; }
 .del { position: absolute; right: 4px; top: 4px; background: var(--raise); padding: 2px 8px; opacity: 0; pointer-events: none; }
 @media (hover: hover) { .row:hover .del { opacity: 1; pointer-events: auto; } }
 .del:focus-visible { opacity: 1; pointer-events: auto; }
