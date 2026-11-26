@@ -6,6 +6,7 @@ import { withDefaults } from './indicators.js';
 import { createTicks, firstChange } from './ticks.js';
 import { logo } from './logos.js';
 import { assetName } from './names.js';
+import { holidayFor } from './holidays.js';
 import { createGuestLocal } from './guest.js';
 import { createLive, applyTick } from './live.js';
 import { AUTO_GROUPS, arrange, autoGroup, groupOf, cleanName } from './groups.js';
@@ -334,14 +335,17 @@ function listRow(inst) {
     const q = quotes[inst.id] ?? {}, d = decimalsFor(inst, q.last);
     const row = el('div', 'rows row' + (inst.id === state.id ? ' active' : ''));
     row.draggable = true; row.dataset.id = inst.id;
-    row.title = q.error ?? `${inst.name} (${inst.exchange})`;
+    const hol = holidayFor(inst);
+    row.title = q.error ?? `${inst.name} (${inst.exchange})` + (hol ? `\n* ${hol.market} closed today: ${hol.name}` : '');
+    const sym = el('span', 'sym', inst.label);
+    if (hol) { const star = el('span', 'hol', '*'); star.setAttribute('aria-label', `holiday, ${hol.market} closed today`); sym.append(star); }
     const flag = el('button', 'flag');
     flag.dataset.c = inst.flag; flag.title = 'Change flag color'; flag.setAttribute('aria-label', `Flag for ${inst.label}`);
     flag.onclick = e => { e.stopPropagation(); cycleFlag(inst); };
     const del = el('button', 'del', '×');
     del.title = 'Remove from watchlist (history is kept)'; del.setAttribute('aria-label', `Remove ${inst.label} from watchlist`);
     del.onclick = e => { e.stopPropagation(); remove(inst); };
-    row.append(flag, logo(inst), el('span', 'sym', inst.label),
+    row.append(flag, logo(inst), sym,
       priceCell(inst, q, d),
       el('span', tone(q.chg), q.chg == null ? '' : num(q.chg, d)),
       el('span', tone(q.pct), pct(q.pct)), el('span', tone(q.ext), pct(q.ext)), el('span', 'name', assetName(inst)), del);

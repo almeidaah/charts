@@ -15,7 +15,7 @@ Local-first charting for stocks, ETFs, indices, forex, futures and crypto on Win
 
 ## Features
 
-- **Watchlist** with the asset name under each ticker, last price, change, change % and extended hours. Automatic groups (Crypto, USA, Brazil, Forex, Indices, Commodities), your own groups, color flags, and drag to reorder.
+- **Watchlist** with the asset name under each ticker, last price, change, change % and extended hours. An asterisk next to the ticker marks a US or B3 holiday, when that market is closed. Automatic groups (Crypto, USA, Brazil, Forex, Indices, Commodities), your own groups, color flags, and drag to reorder.
 - **Search** across US stocks, B3 and other exchanges, ETFs, indices, forex, futures and crypto.
 - **13 timeframes**, from 1 minute to 1 month, plus one-click ranges from 1 day to all history.
 - **6 chart types:** candles, hollow candles, bars, line, area and Heikin Ashi. Log or linear scale.
@@ -98,6 +98,7 @@ On the first run Charts adds a small starter watchlist and downloads its daily h
 - **Flag:** right-click a row and pick one of seven colors. Click the current color to remove the flag, or choose **Unflag all symbols**. Clicking the left edge of a row also cycles through the colors.
 - **Groups:** click a group title to collapse it, or drag the title to reorder groups. Drop a row on another group to move it. To create a group, select a symbol and choose **New group…** under the watchlist. The **Groups** button turns grouping on and off.
 - **Details:** click **Details** under the list to show or hide the panel with the price, ranges and group of the selected symbol.
+- **Holidays:** an asterisk after the ticker means the exchange of that asset (US market or B3) is closed today for a holiday. Hover the row to see which one.
 - **Browse:** use <kbd>↑</kbd> and <kbd>↓</kbd> to go through the list.
 - **Update** refreshes the daily history of every symbol.
 

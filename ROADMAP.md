@@ -13,6 +13,7 @@
 - Read-only guest password on the web version
 - Live sync between the desktop and the web version
 - Price changes highlighted digit by digit
+- Holiday mark for US and B3 assets
 
 ## Planned
 
